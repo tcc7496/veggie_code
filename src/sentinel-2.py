@@ -3,12 +3,12 @@ from datetime import date
 import pandas as pd
 import os
 
-s1dir = '/Users/robwebster/Sync/msc_course/dissertation/data/sentinel-1/'
-s2dir = '/Users/robwebster/Sync/msc_course/dissertation/data/sentinel-2/'
-l8dir = '/Users/robwebster/Sync/msc_course/dissertation/data/landsat-8/'
-aoidir = '/Users/robwebster/Sync/msc_course/dissertation/data/aoi/'
+s1dir = ""
+s2dir = ""
+l8dir = ""
+aoidir = ""
 
-aoi_json = '/Users/robwebster/gsi/kenya_study_area.geojson'
+aoi_json = ""
 #print(aoi_json)
 
 # connect to the API

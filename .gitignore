@@ -2,6 +2,9 @@
 original/
 processing/
 
+# Unwanted python files
+src/sentinel-2.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -131,3 +134,4 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
