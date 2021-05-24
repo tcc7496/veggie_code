@@ -5,6 +5,11 @@ processing/
 # Unwanted python files
 src/sentinel-2.py
 
+# image file
+*.xml
+*.img 
+*.tif
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
