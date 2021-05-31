@@ -37,7 +37,7 @@ def cloud_fmask(file, outdir):
     outpath = f'{os.path.join(imgpath, filename[:-5])}_cloud.img'
 
     # run cloud mask from command line
-    subprocess.run(f'fmask_sentinel2Stacked.py -o {outpath} --safedir {file}', shell=True)
+    subprocess.run(f'fmask_sentinel2Stacked.py -o {outpath} --safedir {file} --pixsize 10 --parallaxtest', shell=True)
 
     # convert output .img file to geotiff
     raster_to_tif(outpath, outdir)
