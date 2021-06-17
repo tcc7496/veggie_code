@@ -27,7 +27,7 @@ def cloud_fmask(file, outdir):
     if not os.path.exists(outdir):
         os.mkdir(outdir)
     
-    # make temporary directory to store img files
+    # make temporary directory to store img files created by fmask commandline run
     # create path to img directory and create directory if it doesn't already exist
     imgpath = os.path.join(outdir, 'img')
     if not os.path.exists(imgpath):
@@ -99,7 +99,13 @@ if __name__ == "__main__":
     inputdir = '/Users/taracunningham/projects/dissertation/sen2processing/original/sen2/'
     outdir = '/Users/taracunningham/projects/dissertation/sen2processing/processing/fmask/'
 
-    batch_cloud_fmask(inputdir, outdir)
+    # batch process cloud masks
+    # batch_cloud_fmask(inputdir, outdir)
+
+    # process single file
+    filename = 'S2B_MSIL1C_20210602T073619_N0300_R092_T36MZC_20210602T101733.SAFE'
+    file = os.path.join(inputdir, filename)
+    cloud_fmask(file, outdir)
     
 
 
