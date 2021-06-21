@@ -1,5 +1,5 @@
 '''
-A script to mask tree species in a species map. A masked tif if output
+A script to mask three tree species in a plant species map of the study area. A masked tif is output. Nodata pixels are included in the mask.
 '''
 # %%
 import rasterio as rio
