@@ -1,5 +1,5 @@
 '''
-A script to mask three tree species in a plant species map of the study area. A masked tif is output. Nodata pixels are included in the mask.
+A script to mask three tree species in a plant species map of the study area. Outputs a tif where nodata = 0 and data = 255 in GDAL RFC 15 style mask
 '''
 # %%
 import rasterio as rio
@@ -9,37 +9,34 @@ import numpy as np
 # %%
 def tree_mask(file, outfile):
     '''
-    A function that masks trees in the input species map and outputs a new tif with trees masked.
+    A function outputs a tif representing tree species masked
     '''
     
     with rio.open(file) as src:
-        # open with mask. Nodata values are True
-        species_map_masked = src.read(1, masked=True)
-
-        # read data into separate array to combine with new mask
+        # load species map to see where trees are
         species_map = src.read(1)
 
-        # create starter mask with nodata values
-        tree_mask = species_map_masked.mask
+        # open with mask. Nodata values are True
+        tree_mask = src.read_masks(1)
 
         # copy profile for writing out
         profile = src.profile.copy()
 
-    # set nodata value
-    profile['nodata'] = -9999
-    
+    # set nodata value to 0 to be within int8 range
+    profile['nodata'] = 0
+
+    # set profile dtype to tree_mask dtype
+    profile['dtype'] = tree_mask.dtype
+
     # mask where species_map is:
     # 1 Acacia | 3 Ficus Sur | 7 Prosopis
-    tree_mask = np.where((species_map == 1) | (species_map == 3) | (species_map == 7), True, tree_mask)
+    tree_mask = np.where((species_map == 1) | (species_map == 3) | (species_map == 7), 0, tree_mask)
 
-    # create new masked array of species map and tree mask
-    species_map_tree_mask = np.ma.masked_array(species_map, mask = tree_mask, fill_value=profile['nodata'])
-
-    # write out species map with tree mask
-    with rio.open(outfile, 'w', **profile) as dst:
-        dst.write(species_map_tree_mask.filled(profile['nodata']), 1)
+    # write out tree mask as tif
     
-
+    with rio.open(outfile, 'w', **profile) as dst:
+        dst.write(tree_mask, 1)
+    
 #######################################
 # %%
 if __name__ == "__main__":
