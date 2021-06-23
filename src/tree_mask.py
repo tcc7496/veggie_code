@@ -16,7 +16,7 @@ def tree_mask(file, outfile):
         # load species map to see where trees are
         species_map = src.read(1)
 
-        # open with mask. Nodata values are True
+        # open with mask. nodata = 0
         tree_mask = src.read_masks(1)
 
         # copy profile for writing out

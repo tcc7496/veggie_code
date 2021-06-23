@@ -16,7 +16,7 @@ import glob
 
 def cloud_fmask(file, outdir):
     '''
-    function to produce a cloud mask using fmask.
+    A function to produce a cloud mask using fmask.
     Input file is TOA reflectance .SAFE directory
     Output is geotiff of cloud mask
     '''
@@ -28,7 +28,7 @@ def cloud_fmask(file, outdir):
         os.mkdir(outdir)
     
     # make temporary directory to store img files created by fmask commandline run
-    # create path to img directory and create directory if it doesn't already exist
+    # construct path to img directory and create directory if it doesn't already exist
     imgpath = os.path.join(outdir, 'img')
     if not os.path.exists(imgpath):
         os.mkdir(imgpath)
@@ -68,7 +68,7 @@ def batch_cloud_fmask(inputdir, outdir):
 
 def raster_to_tif(file, outdir):
     '''
-    convert raster to geotiff format
+    A function to convert a raster to geotiff format
     If output directory isn't specified, file is put in the same folder as input file
     '''
     # separate filename from filepath
@@ -89,23 +89,63 @@ def raster_to_tif(file, outdir):
 
     print(f'{filename} converted to geotiff')
 
+#######################################
 
+def fmask_to_gdal_cloudmask(file, outdir):
+    '''
+    A function to convert output of fmask algorithm to GDAL RFC mask tif. nodata = 0, data = 255
+    '''
+    # obtain full file path to input file
+    filename = os.path.basename(file)
+
+    # check if output directory exists and create it if not
+    if not os.path.exists(outdir):
+        os.mkdir(outdir)
+
+    # construct output filename from input. Takes tile and date
+    # works ONLY for sen2 files
+    outfile = os.path.join(outdir, f'{filename[38:52]}_gdal_cloudmask.tif')
+    
+    # read in result of fmask
+    with rio.open(file) as src:
+        # read in dataset
+        fmask = src.read(1, masked = True)
+
+        # read mask
+        msk = src.read_masks(1)
+
+        # copy profile for writing out
+        profile = src.profile.copy()
+
+    # mask everywhere except where fmask = 1 = clear
+    msk = np.where(fmask == 1, 255, 0)
+
+    # set array dtype to 'uint8' because other masks are in this
+    msk.dtype = profile['dtype']
+
+    # write out cloud/water as tif
+    with rio.open(outfile, 'w', **profile) as dst:
+        dst.write(msk, 1)
+
+        
 #######################################
 
 if __name__ == "__main__":
     ''' Main block '''
 # %%
     # specify input and output directories
-    inputdir = '/Users/taracunningham/projects/dissertation/sen2processing/original/sen2/'
-    outdir = '/Users/taracunningham/projects/dissertation/sen2processing/processing/fmask/'
+    #inputdir = '/Users/taracunningham/projects/dissertation/sen2processing/original/sen2/'
+    #outdir = '/Users/taracunningham/projects/dissertation/sen2processing/processing/fmask/'
 
     # batch process cloud masks
     # batch_cloud_fmask(inputdir, outdir)
 
     # process single file
-    filename = 'S2B_MSIL1C_20210602T073619_N0300_R092_T36MZC_20210602T101733.SAFE'
-    file = os.path.join(inputdir, filename)
-    cloud_fmask(file, outdir)
+    #filename = 'S2B_MSIL1C_20210602T073619_N0300_R092_T36MZC_20210602T101733.SAFE'
+    #file = os.path.join(inputdir, filename)
+    #cloud_fmask(file, outdir)
+
+    fmask_to_gdal_cloudmask('/Users/taracunningham/projects/dissertation/sen2processing/processing/fmask/S2A_MSIL1C_20200523T073621_N0209_R092_T36MZC_20200523T095431_cloud.tif', '/Users/taracunningham/projects/dissertation/sen2processing/processing/cloudmask/')
     
 
 
