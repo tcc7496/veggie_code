@@ -91,7 +91,7 @@ def raster_to_tif(file, outdir):
 
 #######################################
 
-def fmask_to_gdal_cloudmask(file, outdir):
+def fmask_to_gdal_style_cloudmask(file, outdir):
     '''
     A function to convert output of fmask algorithm to GDAL RFC mask tif. nodata = 0, data = 255
     '''
@@ -104,7 +104,7 @@ def fmask_to_gdal_cloudmask(file, outdir):
 
     # construct output filename from input. Takes tile and date
     # works ONLY for sen2 files
-    outfile = os.path.join(outdir, f'{filename[38:52]}_gdal_cloudmask.tif')
+    outfile = os.path.join(outdir, f'{filename[38:52]}_fmask_clear_cloudmask.tif')
     
     # read in result of fmask
     with rio.open(file) as src:
@@ -126,8 +126,7 @@ def fmask_to_gdal_cloudmask(file, outdir):
     # write out cloud/water as tif
     with rio.open(outfile, 'w', **profile) as dst:
         dst.write(msk, 1)
-
-        
+   
 #######################################
 
 if __name__ == "__main__":
