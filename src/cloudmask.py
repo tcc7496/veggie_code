@@ -95,7 +95,7 @@ def fmask_to_gdal_style_cloudmask(file, outdir):
     '''
     A function to convert output of fmask algorithm to GDAL RFC mask tif. nodata = 0, data = 255
     '''
-    # obtain full file path to input file
+    # obtain name of file from full file path
     filename = os.path.basename(file)
 
     # check if output directory exists and create it if not
@@ -126,6 +126,37 @@ def fmask_to_gdal_style_cloudmask(file, outdir):
     # write out cloud/water as tif
     with rio.open(outfile, 'w', **profile) as dst:
         dst.write(msk, 1)
+
+def raster_inversion_to_gdal_mask(file, outfile):
+    '''
+    A function to convert a raster with data that needs to be the masked portion into a GDAL RFC mask tif. nodata = 0, data = 255
+    '''
+
+    # obtain name of file from full file path
+    filename = os.path.basename(file)
+
+    # check if output directory exists and create it if not
+    if not os.path.exists(outdir):
+        os.mkdir(outdir)
+
+    # read in raster with masking
+    with rio.open(file) as src:
+        # read in dataset
+        raster = src.read(1, masked = True)
+
+        # read mask
+        msk = src.read_masks(1)
+
+        # copy profile for writing out
+        profile = src.profile.copy()
+
+    
+
+
+
+
+
+
    
 #######################################
 
