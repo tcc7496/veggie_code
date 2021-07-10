@@ -10,6 +10,7 @@ import os
 import subprocess
 from osgeo import gdal
 import glob
+from tree_mask import tree_mask_bool
 
 
 #######################################
@@ -91,64 +92,52 @@ def raster_to_tif(file, outdir):
 
 #######################################
 
-def fmask_to_gdal_style_cloudmask(file, outdir):
+def fmask_to_boolean_cloudmask(file):
     '''
-    A function to convert output of fmask algorithm to GDAL RFC mask tif. nodata = 0, data = 255
+    A function to convert fmask output to boolean cloudmask array.
+
+    Parameters
+    ----------
+    tif file output by fmask algorithm.
+
+    Returns
+    ----------
+    Boolean array of the cloudmask where only clear pixels are used. fmask = 1 -> mask = False. masked pixel -> True
     '''
-    # obtain name of file from full file path
-    filename = os.path.basename(file)
-
-    # check if output directory exists and create it if not
-    if not os.path.exists(outdir):
-        os.mkdir(outdir)
-
-    # construct output filename from input. Takes tile and date
-    # works ONLY for sen2 files
-    outfile = os.path.join(outdir, f'{filename[38:52]}_fmask_clear_cloudmask.tif')
     
     # read in result of fmask
     with rio.open(file) as src:
         # read in dataset
-        fmask = src.read(1, masked = True)
+        fmask = src.read(1)
 
-        # read mask
-        msk = src.read_masks(1)
+    # convert to boolean by masking everywhere except where fmask = 1 = clear
+    fmask_clear = np.isin(fmask, 1, invert = True)
 
-        # copy profile for writing out
-        profile = src.profile.copy()
+    return fmask_clear
 
-    # mask everywhere except where fmask = 1 = clear
-    msk = np.where(fmask == 1, 255, 0)
+#######################################
 
-    # set array dtype to 'uint8' because other masks are in this
-    msk.dtype = profile['dtype']
-
-    # write out cloud/water as tif
-    with rio.open(outfile, 'w', **profile) as dst:
-        dst.write(msk, 1)
-
-def raster_inversion_to_gdal_mask(file, outfile):
+def rasterized_polygon_clouds_to_cloudmask(file):
     '''
-    A function to convert a raster with data that needs to be the masked portion into a GDAL RFC mask tif. nodata = 0, data = 255
+    A function to convert rasterized cloud polygons to boolean cloudmask array.
+
+    Parameters
+    ----------
+    tif file where the data indicates cloud.
+
+    Returns
+    ----------
+    Boolean array of the cloudmask where only clear pixels -> False and cloud pixel -> True
     '''
 
-    # obtain name of file from full file path
-    filename = os.path.basename(file)
-
-    # check if output directory exists and create it if not
-    if not os.path.exists(outdir):
-        os.mkdir(outdir)
-
-    # read in raster with masking
+    # read in mask. Reads in GDAL format => nodata = 0
     with rio.open(file) as src:
-        # read in dataset
-        raster = src.read(1, masked = True)
-
-        # read mask
         msk = src.read_masks(1)
 
-        # copy profile for writing out
-        profile = src.profile.copy()
+    # convert to boolean
+    boolean_msk = np.isin(msk, 0, invert = True)
+
+    return boolean_msk
 
     
 

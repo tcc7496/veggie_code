@@ -33,11 +33,49 @@ def tree_mask(file, outfile):
     tree_mask = np.where((species_map == 1) | (species_map == 3) | (species_map == 7), 0, tree_mask)
 
     # write out tree mask as tif
-    
     with rio.open(outfile, 'w', **profile) as dst:
         dst.write(tree_mask, 1)
     
 #######################################
+
+def tree_mask_bool(file):
+    '''
+    a function that outputs a boolean array indicating tree species to be masked.
+
+    Parameters
+    ----------
+    file: tif file with different plant species indicated by integers.
+
+    Returns
+    ----------
+    tree_mask_bool: boolean array of the treemask where species masked -> True
+    '''
+
+    # read in species_map
+    with rio.open(file) as src:
+        species_map = src.read(1)
+        tree_mask = src.read_masks(1)
+
+    # create starting mask with nodata values masked
+    tree_mask_bool = np.isin(tree_mask, 0)
+
+    # create list of species numbers to mask
+    msk_species = [1, 3, 7]
+
+    # mask each species in 
+    for m in msk_species:
+        msk = np.isin(species_map, m)
+        tree_mask_bool = msk | tree_mask_bool
+
+    return tree_mask_bool
+
+    
+
+
+
+
+
+
 # %%
 if __name__ == "__main__":
     ''' Main block '''
