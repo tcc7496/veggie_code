@@ -81,6 +81,8 @@ def raster_to_tif(file, outdir):
     if nchars > 0:
         nchars = nchars + 1
 
+    # think can also use os.path.splitext(filename).
+
     # run conversion
     # check if output directory specified
     if outdir == None:
