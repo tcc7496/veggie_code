@@ -31,32 +31,32 @@ def ndvi(filepath, aoi = None):
     if aoi is not None:
         with fiona.open("/Users/Cate/UK_Mainland.shp", "r") as shapefile:
             geoms = [feature["geometry"] for feature in shapefile]
-            # can do it with the crop=True thing I think
 
-        with rasterio.open("jan_clip.tif") as src:
-            out_image, out_transform = mask(src, geoms, crop=True)
+        with rasterio.open(f'{filepath}/T36MZC_20180514T073611_B04_10m.jp2') as src:
+            red_image, red_transform = mask(src, geoms, crop=True)
+            out_meta = src.meta.copy()
+
+        with rasterio.open(f'{filepath}/T36MZC_20180514T073611_B08_10m.jp2') as src:
+            nir_image, nir_transform = mask(src, geoms, crop=True)
             out_meta = src.meta.copy()
 
         out_meta.update({"driver": "GTiff",
-                 "height": out_image.shape[1],
-                 "width": out_image.shape[2],
-                 "transform": out_transform})
-
-        with rasterio.open("masked2.tif", "w", **out_meta) as dest:
-            dest.write(out_image)
+                 "height": red_image.shape[1],
+                 "width": red_image.shape[2],
+                 "transform": red_transform})
     
 
-
-    # read in red and NIR bands
-    red = rio.open(f'{filepath}/T36MZC_20180514T073611_B04_10m.jp2', driver ='JP2OpenJPEG')
-    nir = rio.open(f'{filepath}/T36MZC_20180514T073611_B08_10m.jp2', driver ='JP2OpenJPEG')
+    else:
+        # read in red and NIR bands
+        red = rio.open(f'{filepath}/T36MZC_20180514T073611_B04_10m.jp2', driver ='JP2OpenJPEG')
+        nir = rio.open(f'{filepath}/T36MZC_20180514T073611_B08_10m.jp2', driver ='JP2OpenJPEG')
 
     # read metadata
     kwargs = red.meta
 
     # read values to do band maths
-    b04 = red.read(1, masked = True).astype('float64') # change dtype to float in prep for ndvi calc
-    b08 = nir.read(1, masked = True).astype('float64')
+    b04_image = red.read(1, masked = True).astype('float64') # change dtype to float in prep for ndvi calc
+    b08_image = nir.read(1, masked = True).astype('float64')
 
     # close files
     red.close()
