@@ -7,8 +7,10 @@ from tree_mask import all
 import numpy as np
 import matplotlib.pyplot as plt
 import rasterio as rio
-from rasterio.tools.mask import mask
+from rasterio.mask import mask
 import fiona
+import glob
+from band_process import open_band
 
 
 def ndvi(filepath, aoi = None):
@@ -17,65 +19,61 @@ def ndvi(filepath, aoi = None):
 
     Parameters
     ----------
-    filepath: to folder containing individual bands
+    filepath: to SAFE directory for L2A
     aoi: optional parameter to crop raster to an area of interest by providing full path to a shapefile
 
     Returns
     ----------
     '''
-
     # %%
     # for testing
-    filepath = '/Users/taracunningham/projects/dissertation/sen2processing/processing/l2a/S2A_MSIL2A_20180514T073611_N9999_R092_T36MZC_20210520T183726.SAFE/GRANULE/L2A_T36MZC_A015104_20180514T075528/IMG_DATA/R10m'
+    filepath = '/Users/taracunningham/projects/dissertation/sen2processing/processing/l2a/S2A_MSIL2A_20180514T073611_N9999_R092_T36MZC_20210520T183726.SAFE/'
+    # construct file path to individual bands
+    bands_path = os.path.join(filepath, 'GRANULE/*/IMG_DATA/R10m/')
+    # get list of full filepaths to bands 4 and 8
+    bands_list = [glob.glob(b)[0] for b in [f'{bands_path}*B04*', f'{bands_path}*B08*']]
 
-    if aoi is not None:
-        with fiona.open("/Users/Cate/UK_Mainland.shp", "r") as shapefile:
-            geoms = [feature["geometry"] for feature in shapefile]
 
-        with rasterio.open(f'{filepath}/T36MZC_20180514T073611_B04_10m.jp2') as src:
-            red_image, red_transform = mask(src, geoms, crop=True)
-            out_meta = src.meta.copy()
+    # %%
+    # create empty dictionary to store outputs
+    bands_data = {}
 
-        with rasterio.open(f'{filepath}/T36MZC_20180514T073611_B08_10m.jp2') as src:
-            nir_image, nir_transform = mask(src, geoms, crop=True)
-            out_meta = src.meta.copy()
+    # create list of bands to loop over
+    bands_to_process = ['b04', 'b08']
 
-        out_meta.update({"driver": "GTiff",
-                 "height": red_image.shape[1],
-                 "width": red_image.shape[2],
-                 "transform": red_transform})
-    
+    # loop over bands list
+    for band, f in zip(bands_to_process, bands_list):
+        # add band to dictionary
+        bands_data[band] = {}
+        # add outputs to dictionary
+        bands_data[band]['image'], bands_data[band]['mask'], bands_data[band]['profile'] = open_band(f, aoi = None)
 
-    else:
-        # read in red and NIR bands
-        red = rio.open(f'{filepath}/T36MZC_20180514T073611_B04_10m.jp2', driver ='JP2OpenJPEG')
-        nir = rio.open(f'{filepath}/T36MZC_20180514T073611_B08_10m.jp2', driver ='JP2OpenJPEG')
+        # convert masks to boolean masks
+        bands_data[band]['image'].mask = np.isin(bands_data[band]['image'].data, 0)
+        bands_data[band]['mask'] = bands_data[band]['image'].mask
 
-    # read metadata
-    kwargs = red.meta
+        # change datatype so that band maths work
+        bands_data[band]['image'] = bands_data[band]['image'].astype('float64')
+        bands_data[band]['profile']['dtype'] = 'float64'    # update profile
 
-    # read values to do band maths
-    b04_image = red.read(1, masked = True).astype('float64') # change dtype to float in prep for ndvi calc
-    b08_image = nir.read(1, masked = True).astype('float64')
-
-    # close files
-    red.close()
-    nir.close()
+    # %%
 
     # calculate ndvi
-    ndvi = (b08 - b04) / (b08 + b04)
+    ndvi = (bands_data['b08']['image'] - bands_data['b04']['image']) / (bands_data['b08']['image'] + bands_data['b04']['image'])
 
-    # update profile for writing out
-    kwargs.update(
+    # create profile for writing out
+    out_profile = bands_data['b04']['profile']
+    out_profile.update(
         dtype=ndvi.dtype,
         driver = 'Gtiff'
         )
 
+
     # write out ndvi test
-    with rio.open('/Users/taracunningham/projects/dissertation/sen2processing/processing/l2a/ndvi_test2.tif', 'w', **kwargs) as dst:
+    with rio.open('/Users/taracunningham/projects/dissertation/sen2processing/processing/l2a/ndvi_test3.tif', 'w', **kwargs) as dst:
         dst.write_band(1, ndvi)
 
-
+    # %%
     '''
     rasters = [rasterio.open(p) for p in file_paths]
     stacked = np.dstack([r.read() for r in rasters])
