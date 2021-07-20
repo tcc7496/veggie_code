@@ -11,6 +11,10 @@ import subprocess
 from osgeo import gdal
 import glob
 from tree_mask import tree_mask_bool
+import fiona
+import fiona.crs
+from rasterio.mask import mask
+import rasterio.crs
 
 
 #######################################
@@ -94,13 +98,14 @@ def raster_to_tif(file, outdir):
 
 #######################################
 
-def fmask_to_boolean_cloudmask(file):
+def fmask_to_boolean_cloudmask(file, aoi = None):
     '''
     A function to convert fmask output to boolean cloudmask array.
 
     Parameters
     ----------
-    tif file output by fmask algorithm.
+    file: tif file output by fmask algorithm
+    aoi: optional to crop file to an area of interest
 
     Returns
     ----------
@@ -108,14 +113,43 @@ def fmask_to_boolean_cloudmask(file):
     '''
     
     # read in result of fmask
-    with rio.open(file) as src:
-        # read in dataset
-        fmask = src.read(1)
+    if aoi is None:
+        with rio.open(file) as src:
+            fmask = src.read(1)
+            profile = src.profile.copy()
+
+    else:
+        # open shapefile to crop raster to
+        with fiona.open(aoi, "r") as shapefile:
+            with rio.open(file) as src:
+                # find epsg code of shapefile
+                shp_crs = shapefile.crs
+                shp_epsg = shp_crs['init'][5:]
+                # find epsg code of raster
+                raster_crs = src.crs
+                raster_epsg = rasterio.crs.CRS.to_epsg(raster_crs)
+
+                # check crs are the same
+                if raster_epsg != shp_epsg:
+                    reproject_crs()
+            
+            geoms = [feature["geometry"] for feature in shapefile]
+        
+        # open band
+        with rio.open(file) as src:
+            fmask, transform = mask(src, geoms, crop = True, filled = True)
+            profile = src.profile.copy()
+        # update profile for new shape
+        profile.update({
+                 "height": fmask.shape[1],
+                 "width": fmask.shape[2],
+                 "transform": transform
+                 })
 
     # convert to boolean by masking everywhere except where fmask = 1 = clear
     fmask_clear = np.isin(fmask, 1, invert = True)
 
-    return fmask_clear
+    return fmask_clear, profile
 
 #######################################
 
@@ -142,11 +176,6 @@ def rasterized_polygon_clouds_to_cloudmask(file):
     return boolean_msk
 
     
-
-
-
-
-
 
    
 #######################################

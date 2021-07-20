@@ -5,6 +5,8 @@ A script to deal with tif files
 import rasterio as rio
 from rasterio.mask import mask
 import fiona
+import pyproj
+from shapely.ops import transform
 
 def open_band(file, aoi = None):
     '''
@@ -47,5 +49,24 @@ def open_band(file, aoi = None):
                  })
             
     return image, msk, profile
+
+#######################################
+
+def check_crs():
+    '''
+    check two crs are the same. Return boolean
+    '''
+
+
+#######################################
+
+def reproject_crs(file, dst_crs):
+    '''
+
+    '''
+
+
+if __name__ == "__main__":
+    ''' Main block '''
 
     
