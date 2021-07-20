@@ -33,18 +33,19 @@ def open_band(file, aoi = None):
            
     else:
         # open shapefile to crop raster to
-        with fiona.open("aoi", "r") as shapefile:
+        with fiona.open(aoi, "r") as shapefile:
             geoms = [feature["geometry"] for feature in shapefile]
         
         # open band
         with rio.open(file, driver = 'JP2OpenJPEG') as src:
-            image, transform = mask(src, geoms, crop = True, filled = True)
+            image, transform = mask(src, shapes = geoms, crop = True, filled = False)
+            image = image[0]
             msk = src.read_masks(1)
             profile = src.profile.copy()
         # update profile for new shape
         profile.update({
-                 "height": image.shape[1],
-                 "width": image.shape[2],
+                 "height": image.shape[0],
+                 "width": image.shape[1],
                  "transform": transform
                  })
             

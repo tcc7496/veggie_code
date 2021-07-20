@@ -12,9 +12,7 @@ from osgeo import gdal
 import glob
 from tree_mask import tree_mask_bool
 import fiona
-import fiona.crs
 from rasterio.mask import mask
-import rasterio.crs
 
 
 #######################################
@@ -121,28 +119,17 @@ def fmask_to_boolean_cloudmask(file, aoi = None):
     else:
         # open shapefile to crop raster to
         with fiona.open(aoi, "r") as shapefile:
-            with rio.open(file) as src:
-                # find epsg code of shapefile
-                shp_crs = shapefile.crs
-                shp_epsg = shp_crs['init'][5:]
-                # find epsg code of raster
-                raster_crs = src.crs
-                raster_epsg = rasterio.crs.CRS.to_epsg(raster_crs)
-
-                # check crs are the same
-                if raster_epsg != shp_epsg:
-                    reproject_crs()
-            
             geoms = [feature["geometry"] for feature in shapefile]
         
         # open band
         with rio.open(file) as src:
-            fmask, transform = mask(src, geoms, crop = True, filled = True)
+            fmask, transform = mask(src, geoms, crop = True, filled = False)
+            fmask = fmask[0]
             profile = src.profile.copy()
         # update profile for new shape
         profile.update({
-                 "height": fmask.shape[1],
-                 "width": fmask.shape[2],
+                 "height": fmask.shape[0],
+                 "width": fmask.shape[1],
                  "transform": transform
                  })
 
