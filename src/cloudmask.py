@@ -123,7 +123,7 @@ def fmask_to_boolean_cloudmask(file, aoi = None):
         
         # open band
         with rio.open(file) as src:
-            fmask, transform = mask(src, geoms, crop = True, filled = False)
+            fmask, transform = mask(src, geoms, crop = True, filled = True)
             fmask = fmask[0]
             profile = src.profile.copy()
         # update profile for new shape
