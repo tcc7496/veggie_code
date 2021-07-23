@@ -12,7 +12,7 @@ from veg_indices import *
 #######################################
 '''
 1 Atmsopheric Correction:
-level-1C product to level-2A. Run from command line atm_cor.sh
+level-1C product to level-2A. Run script 'atm_cor.sh' from command line 
 
 '''
 #######################################
@@ -46,8 +46,14 @@ tree_mask(file, outfile, aoi = aoi)
 
 #######################################
 '''
-4 :
+4 Calculate veg indices - NDVI, EVI:
 
-
+NDVI calculation for masking brown vegetation. Threshold still tbc. Starting point 0.3 - 0.4.
 
 '''
+
+# construct output names for ndvi files
+
+
+
+ndvi = ndvi_calc(filepath, cloudmask, outfile = outfile_ndvi, aoi = aoi)

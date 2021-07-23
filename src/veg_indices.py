@@ -15,7 +15,7 @@ import os
 from rasterio.plot import show
 
 
-def ndvi_calc(filepath, cloudmask, outfile = None, aoi = None):
+def ndvi_calc(filepath, cloudmask, treemask = None, outfile = None, aoi = None):
     '''
     A function to calculate ndvi = (B8 - B4) / (B8 + B4)
 
@@ -90,7 +90,7 @@ def ndvi_calc(filepath, cloudmask, outfile = None, aoi = None):
         with rio.open(outfile, 'w', **out_profile) as dst:
             dst.write_band(1, ndvi.filled())
 
-    return ndvi, out_profile
+    return ndvi
 
     '''
     rasters = [rasterio.open(p) for p in file_paths]
@@ -105,9 +105,8 @@ def mask_ndvi(ndvi, threshold):
     
     Parameters
     ----------
-    ndvi: masked array of ndvi
+    ndvi: tif of ndvi
     threshold: pixels below this value will be masked
-
 
     Returns
     ----------
@@ -115,9 +114,11 @@ def mask_ndvi(ndvi, threshold):
 
     '''
 
+    # open tif masked
     with rio.open(ndvi) as src:
         image = src.read(1, masked = True)
 
+    # construct boolean mask where pixels below threshold are masked = True
     ndvi_mask = np.ma.masked_where(image < threshold, image, copy = True).mask
     
     return ndvi_mask
@@ -203,6 +204,67 @@ def evi_calc(filepath, cloudmask, treemask = None, ndvimask = None, outfile = No
     return evi, out_profile
 
 
+#######################################
+
+def batch_veg_indices(indputdir, aoi = None):
+    '''
+    A function to batch process NDVI and EVI calculations
+
+    Parameters
+    ----------
+    inputdir: directory containing level-2A .SAFE directories to process
+    outdir: directory where tifs of veg indices will be placed inside NDVI and EVI folders 
+
+    Outputs
+    ----------
+    tifs of NDVI and EVI for each .SAFE directory in the input directory
+
+    '''
+    # %%
+    inputdir = '/Users/taracunningham/projects/dissertation/sen2processing/processing/l2a/'
+
+    # create output directories
+    outdir_veg = os.path.join(os.path.dirname(os.path.dirname(inputdir)), 'veg_indices')
+    outdirs = [os.path.join(outdir_veg, 'ndvi'), os.path.join(outdir_veg, 'evi')]
+    
+    # check if output directory exists and create it if not
+    for outdir in outdirs:
+        if not os.path.exists(outdir):
+            os.mkdir(outdir)
+    
+    # create list of .SAFE directories in input directory
+    inputfilelist = glob.glob(f'{inputdir}/*.SAFE')
+
+    # sort inputfilelist by date datetime.datetime.strniad something
+
+    outfilelist_dates = [os.path.basename(inputfile)[11:18] for inputfile in inputfilelist]
+
+
+    # create list of cloudmasks
+    cloudmasklist = []
+
+    if len(inputfilelist) == 0:
+        print(f'Input directory does not contain any .SAFE directories.')
+    else:
+        # loop over list of files
+        for infile, outfile, cloudmask in zip(inputfilelist, outfilelist_dates, cloudmasklist):
+            print(f'Processing {infile}...')
+
+            # calculate NDVI
+            ndvi_calc(infile, cloudmask, outfile = f'{os.path.join(outdirs[0], outfile)}_ndvi.tif', aoi = aoi)
+
+            # calculate EVI
+            evi_calc(infile, cloudmask, treemask = None, ndvimask = None, outfile = f'{os.path.join(outdirs[0], outfile)}_evi.tif', aoi = aoi)
+
+        
+
+    # %%
+            
+
+
+
+
+
 
 
 if __name__ == "__main__":
@@ -229,7 +291,7 @@ if __name__ == "__main__":
     threshold = 0.3
 
 
-    #ndvi, ndvi_profile = ndvi_calc(filepath, cloudmask, outfile = outfile_ndvi, aoi = aoi)
+    #ndvi = ndvi_calc(filepath, cloudmask, outfile = outfile_ndvi, aoi = aoi)
 
     ndvi_mask = mask_ndvi(ndvi, threshold)
 
