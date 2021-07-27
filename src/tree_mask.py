@@ -102,7 +102,7 @@ def tree_mask_bool(file, aoi = None):
     '''
 
     # read in species_map
-    if aoi == None:
+    if aoi is None:
         with rio.open(file) as src:
             species_map = src.read(1)
             tree_mask = src.read_masks(1)
@@ -119,8 +119,8 @@ def tree_mask_bool(file, aoi = None):
             profile = src.profile.copy()
         # update profile for new shape
         profile.update({
-                 "height": fmask.shape[0],
-                 "width": fmask.shape[1],
+                 "height": tree_mask.shape[0],
+                 "width": tree_mask.shape[1],
                  "transform": transform
                  })
 
@@ -136,7 +136,6 @@ def tree_mask_bool(file, aoi = None):
         tree_mask_bool = msk | tree_mask_bool
 
     
-
     return tree_mask_bool
 
     

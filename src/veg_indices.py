@@ -2,7 +2,7 @@
 A script containing functions to calculate vegetation indices from sentinel 2 level-2A images
 '''
 # %%
-from cloudmask import fmask_to_boolean_cloudmask
+from cloudmask import fmask_to_boolean_cloudmask, rasterized_polygon_clouds_to_cloudmask
 from tree_mask import tree_mask_bool
 from band_process import open_band, update_nodata_vals
 import numpy as np
@@ -13,6 +13,9 @@ import fiona
 import glob
 import os
 from rasterio.plot import show
+import datetime
+import pandas as pd
+import re
 
 
 def ndvi_calc(filepath, cloudmask, treemask = None, outfile = None, aoi = None):
@@ -37,8 +40,13 @@ def ndvi_calc(filepath, cloudmask, treemask = None, outfile = None, aoi = None):
 
     '''
 
-    # prepare boolean cloudmask from fmask
-    clouds, _ = fmask_to_boolean_cloudmask(cloudmask, aoi = aoi)
+    # check which type of cloudmask is to be processed - drawn or fmask
+    if 'polygon' in cloudmask:
+        # drawn cloudmask
+        clouds = rasterized_polygon_clouds_to_cloudmask(cloudmask, aoi = aoi)
+    else:
+        # prepare boolean cloudmask from fmask
+        clouds, _ = fmask_to_boolean_cloudmask(cloudmask, aoi = aoi)
 
     # construct file path to individual bands
     bands_path = os.path.join(filepath, 'GRANULE/*/IMG_DATA/R10m/')
@@ -130,8 +138,13 @@ def evi_calc(filepath, cloudmask, treemask = None, ndvimask = None, outfile = No
     A function to calculate EVI
     '''
 
-    # prepare boolean cloudmask from fmask
-    clouds, _ = fmask_to_boolean_cloudmask(cloudmask, aoi = aoi)
+    # check which type of cloudmask is to be processed - drawn or fmask
+    if 'polygon' in cloudmask:
+        # drawn cloudmask
+        clouds = rasterized_polygon_clouds_to_cloudmask(cloudmask, aoi = aoi)
+    else:
+        # prepare boolean cloudmask from fmask
+        clouds, _ = fmask_to_boolean_cloudmask(cloudmask, aoi = aoi)
 
     # read in tree mask
     with rio.open(treemask) as src:
@@ -206,14 +219,14 @@ def evi_calc(filepath, cloudmask, treemask = None, ndvimask = None, outfile = No
 
 #######################################
 
-def batch_veg_indices(indputdir, aoi = None):
+def batch_veg_indices(inputdir, path_to_cloudmasks, aoi = None):
     '''
     A function to batch process NDVI and EVI calculations
 
     Parameters
     ----------
     inputdir: directory containing level-2A .SAFE directories to process
-    outdir: directory where tifs of veg indices will be placed inside NDVI and EVI folders 
+    cloudmasks_list: full filepath to text file containing list of cloudmasks (with filepaths) for each corresponding year of data in input directory
 
     Outputs
     ----------
@@ -221,13 +234,14 @@ def batch_veg_indices(indputdir, aoi = None):
 
     '''
     # %%
-    inputdir = '/Users/taracunningham/projects/dissertation/sen2processing/processing/l2a/'
 
     # create output directories
     outdir_veg = os.path.join(os.path.dirname(os.path.dirname(inputdir)), 'veg_indices')
     outdirs = [os.path.join(outdir_veg, 'ndvi'), os.path.join(outdir_veg, 'evi')]
     
-    # check if output directory exists and create it if not
+    # check if output directories exists and create it if not
+    if not os.path.exists(outdir_veg):
+        os.mkdir(outdir_veg)
     for outdir in outdirs:
         if not os.path.exists(outdir):
             os.mkdir(outdir)
@@ -235,31 +249,81 @@ def batch_veg_indices(indputdir, aoi = None):
     # create list of .SAFE directories in input directory
     inputfilelist = glob.glob(f'{inputdir}/*.SAFE')
 
-    # sort inputfilelist by date datetime.datetime.strniad something
+    # sort list of input files by date, most recent first
+    infilelist_sorted = sort_list_by_date(inputfilelist)
 
-    outfilelist_dates = [os.path.basename(inputfile)[11:18] for inputfile in inputfilelist]
-
+    # create list of base dates for output file names
+    outfilelist = [os.path.basename(inputfile)[11:18] for inputfile in infilelist_sorted]
 
     # create list of cloudmasks
-    cloudmasklist = []
+    with open(path_to_cloudmasks) as file:
+        cloudmasklist = file.readlines()
+    # strip trailing whitespace
+    cloudmasklist = [x.rstrip('\n') for x in cloudmasklist]
 
+    # sort cloudmask list by date so that dates are in same order as list of input files
+    cloudmasklist_sorted = sort_list_by_date(cloudmasklist)
+    
+    # %%
     if len(inputfilelist) == 0:
         print(f'Input directory does not contain any .SAFE directories.')
     else:
         # loop over list of files
-        for infile, outfile, cloudmask in zip(inputfilelist, outfilelist_dates, cloudmasklist):
+        for infile, outfile, cloudmask in zip(infilelist_sorted, outfilelist, cloudmasklist_sorted):
+            
+            # check dates are the same in input, output and cloudmask
+
             print(f'Processing {infile}...')
 
             # calculate NDVI
             ndvi_calc(infile, cloudmask, outfile = f'{os.path.join(outdirs[0], outfile)}_ndvi.tif', aoi = aoi)
 
             # calculate EVI
-            evi_calc(infile, cloudmask, treemask = None, ndvimask = None, outfile = f'{os.path.join(outdirs[0], outfile)}_evi.tif', aoi = aoi)
+            evi_calc(infile, cloudmask, treemask = None, ndvimask = None, outfile = f'{os.path.join(outdirs[1], outfile)}_evi.tif', aoi = aoi)
 
         
 
     # %%
-            
+#######################################
+
+def sort_list_by_date(inlist):
+    '''
+    A function to sort a list of filenames by date in format yyyymmdd as in sen2 files
+
+    Parameters
+    ----------
+    inlist: a list of filenames as strings
+
+    Returns
+    ----------
+    outlist: sorted list of filenames as strings with most recent first
+
+    '''
+
+    # convert list to dataframe  
+    list_df = pd.DataFrame(inlist, columns = ['filename'])
+
+    # create regular expression to search for dates
+    match = re.search(r'\d{4}\d{2}\d{2}', list_df['filename'][0])
+
+    # define function to extract date
+    def extract_date(string):
+        match = re.search(r'\d{4}\d{2}\d{2}', string)
+        date = datetime.datetime.strptime(match.group(), '%Y%m%d')
+        return date
+
+    # create new date column
+    list_df['date'] = list_df.apply(lambda x: extract_date(x['filename']), axis = 1)
+    
+    # sort df by date
+    list_df = list_df.sort_values(by = 'date', ascending = False)
+
+    # convert filename column back to list
+    outlist = list_df['filename'].to_list()
+
+    return outlist
+
+# %%
 
 
 
@@ -272,30 +336,37 @@ if __name__ == "__main__":
 
     # %%
     # for testing
-    filepath = '/Users/taracunningham/projects/dissertation/sen2processing/processing/l2a/S2A_MSIL2A_20180514T073611_N9999_R092_T36MZC_20210520T183726.SAFE/'
+    #filepath = '/Users/taracunningham/projects/dissertation/sen2processing/processing/l2a/S2A_MSIL2A_20180514T073611_N9999_R092_T36MZC_20210520T183726.SAFE/'
 
-    cloudmask = '/Users/taracunningham/projects/dissertation/sen2processing/processing/fmask/S2A_MSIL1C_20180514T073611_N0206_R092_T36MZC_20180514T095515_cloud.tif'
+    #cloudmask = '/Users/taracunningham/projects/dissertation/sen2processing/processing/fmask/S2A_MSIL1C_20180514T073611_N0206_R092_T36MZC_20180514T095515_cloud.tif'
 
-    treemask = '/Users/taracunningham/projects/dissertation/sen2processing/processing/tree_mask/tree_mask_species_map_4.tif'
+    #treemask = '/Users/taracunningham/projects/dissertation/sen2processing/processing/tree_mask/tree_mask_species_map_4.tif'
 
-    outfile_ndvi = '/Users/taracunningham/projects/dissertation/sen2processing/processing/ndvi/T36MZC_20180514_ndvi.tif'
+    #outfile_ndvi = '/Users/taracunningham/projects/dissertation/sen2processing/processing/ndvi/T36MZC_20180514_ndvi.tif'
 
     aoi = '/Users/taracunningham/projects/dissertation/other_data/study_area_shapefile/study_area.geojson'
 
-    ndvi = '/Users/taracunningham/projects/dissertation/sen2processing/processing/ndvi/T36MZC_20180514_ndvi.tif'
+    #ndvi = '/Users/taracunningham/projects/dissertation/sen2processing/processing/ndvi/T36MZC_20180514_ndvi.tif'
 
-    outfile_ndvi_mask = '/Users/taracunningham/projects/dissertation/sen2processing/processing/ndvi/T36MZC_20180514_ndvi_mask_0-3.tif'
+    #outfile_ndvi_mask = '/Users/taracunningham/projects/dissertation/sen2processing/processing/ndvi/T36MZC_20180514_ndvi_mask_0-3.tif'
 
-    outfile_evi = '/Users/taracunningham/projects/dissertation/sen2processing/processing/evi/T36MZC_20180514_evi_ndvi_mask_0-3.tif'
+    #outfile_evi = '/Users/taracunningham/projects/dissertation/sen2processing/processing/evi/T36MZC_20180514_evi_ndvi_mask_0-3.tif'
 
-    threshold = 0.3
+    #threshold = 0.3
+
+    inputdir = '/Users/taracunningham/projects/dissertation/sen2processing/processing/l2a/'
+    path_to_cloudmasks = '/Users/taracunningham/projects/dissertation/sen2processing/processing/cloudmasks.txt'
+
+    batch_veg_indices(inputdir, path_to_cloudmasks, aoi = aoi)
+
+
 
 
     #ndvi = ndvi_calc(filepath, cloudmask, outfile = outfile_ndvi, aoi = aoi)
 
-    ndvi_mask = mask_ndvi(ndvi, threshold)
+    #ndvi_mask = mask_ndvi(ndvi, threshold)
 
-    evi, evi_profile = evi_calc(filepath, cloudmask, treemask, ndvimask = ndvi_mask, outfile = outfile_evi, aoi = aoi)
+    #evi, evi_profile = evi_calc(filepath, cloudmask, treemask, ndvimask = ndvi_mask, outfile = outfile_evi, aoi = aoi)
 
 
 

@@ -140,25 +140,45 @@ def fmask_to_boolean_cloudmask(file, aoi = None):
 
 #######################################
 
-def rasterized_polygon_clouds_to_cloudmask(file):
+def rasterized_polygon_clouds_to_cloudmask(file, aoi = None):
     '''
     A function to convert rasterized cloud polygons to boolean cloudmask array.
 
     Parameters
     ----------
-    tif file where the data indicates cloud.
+    file: tif file where the data indicates cloud.
+    aoi: area of interest to crop data to
 
     Returns
     ----------
     Boolean array of the cloudmask where only clear pixels -> False and cloud pixel -> True
     '''
 
-    # read in mask. Reads in GDAL format => nodata = 0
-    with rio.open(file) as src:
-        msk = src.read_masks(1)
+    if aoi is None:
+        # read in mask. Reads in GDAL format => nodata = 0
+        with rio.open(file) as src:
+            msk = src.read_masks(1)
+        
+        # convert to boolean
+        boolean_msk = np.isin(msk, 0, invert = True)
 
-    # convert to boolean
-    boolean_msk = np.isin(msk, 0, invert = True)
+    else:
+        with fiona.open(aoi, "r") as shapefile:
+            geoms = [feature["geometry"] for feature in shapefile]
+        
+        # open band
+        with rio.open(file) as src:
+            msk, transform = mask(src, geoms, crop = True, filled = True)
+            msk = msk[0]    # cloud = 1
+            profile = src.profile.copy()
+            # update profile for new shape
+            profile.update({
+                 "height": msk.shape[0],
+                 "width": msk.shape[1],
+                 "transform": transform
+                 })
+        # convert to boolean
+        boolean_msk = np.isin(msk, 1)
 
     return boolean_msk
 
