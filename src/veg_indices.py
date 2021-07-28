@@ -83,7 +83,7 @@ def ndvi_calc(filepath, cloudmask, treemask = None, outfile = None, aoi = None):
     ndvi = (bands_data['b08']['image'] - bands_data['b04']['image']) / (bands_data['b08']['image'] + bands_data['b04']['image'])
 
     # double check setting fill value to -9999
-    np.ma.set_fill_value(ndvi -9999)
+    np.ma.set_fill_value(ndvi, -9999)
 
     # create profile for writing out
     out_profile = bands_data['b04']['profile']
@@ -146,9 +146,10 @@ def evi_calc(filepath, cloudmask, treemask = None, ndvimask = None, outfile = No
         # prepare boolean cloudmask from fmask
         clouds, _ = fmask_to_boolean_cloudmask(cloudmask, aoi = aoi)
 
-    # read in tree mask
-    with rio.open(treemask) as src:
-        trees = src.read(1, masked = True).mask
+    if treemask is not None:
+        # read in tree mask
+        with rio.open(treemask) as src:
+            trees = src.read(1, masked = True).mask
 
     # construct file path to individual bands
     bands_path = os.path.join(filepath, 'GRANULE/*/IMG_DATA/R10m/')
@@ -233,7 +234,6 @@ def batch_veg_indices(inputdir, path_to_cloudmasks, aoi = None):
     tifs of NDVI and EVI for each .SAFE directory in the input directory
 
     '''
-    # %%
 
     # create output directories
     outdir_veg = os.path.join(os.path.dirname(os.path.dirname(inputdir)), 'veg_indices')
@@ -255,22 +255,19 @@ def batch_veg_indices(inputdir, path_to_cloudmasks, aoi = None):
     # create list of base dates for output file names
     outfilelist = [os.path.basename(inputfile)[11:18] for inputfile in infilelist_sorted]
 
-    # create list of cloudmasks
-    with open(path_to_cloudmasks) as file:
-        cloudmasklist = file.readlines()
-    # strip trailing whitespace
-    cloudmasklist = [x.rstrip('\n') for x in cloudmasklist]
+    # create list of cloudmasks, removing whitespace
+    with open(path_to_cloudmasks) as f:
+        cloudmasklist = [file.strip() for file in f]
 
     # sort cloudmask list by date so that dates are in same order as list of input files
     cloudmasklist_sorted = sort_list_by_date(cloudmasklist)
     
-    # %%
     if len(inputfilelist) == 0:
         print(f'Input directory does not contain any .SAFE directories.')
     else:
         # loop over list of files
         for infile, outfile, cloudmask in zip(infilelist_sorted, outfilelist, cloudmasklist_sorted):
-            
+
             # check dates are the same in input, output and cloudmask
 
             print(f'Processing {infile}...')
@@ -282,8 +279,6 @@ def batch_veg_indices(inputdir, path_to_cloudmasks, aoi = None):
             evi_calc(infile, cloudmask, treemask = None, ndvimask = None, outfile = f'{os.path.join(outdirs[1], outfile)}_evi.tif', aoi = aoi)
 
         
-
-    # %%
 #######################################
 
 def sort_list_by_date(inlist):
