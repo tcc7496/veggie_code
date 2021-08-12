@@ -26,100 +26,115 @@ setwd(wd)
 #### Functions ####
 
 # open raster
-open_band <- function(band) {
+open.band <- function(band) {
   band <- raster(paste0(wd, band))
   # calc and save min and max values of raster to object
   band <- setMinMax(band)
   return(band)
 }
 
+# mask raster with shapefile
+mask.raster.with.shp <- function(r, shp) {
+  # values within polygon are set to NA
+  # polygon must be contained within raster
+  r_masked <- mask(r, mask = shp, inverse = TRUE)
+  return(r_masked)
+}
 
-##### 2017 #####
+# mask raster with another raster
+mask.raster.with.raster <- function(r, rmask) {
+  # values with data in rmask are set to NA in r
+  r[!is.na(rmask)] <- NA
+  return(r)
+}
 
-### Read in data
+# prepare the data for glcm calcuation to make sure it's the same each time
+rescale.outliers <- function(r) {
+  # set values less than 0 to zero
+  # ref: Farwell et al. pg.3
+  r[r < 0] <- 0
+  
+  # set values > 1 to NA because meaningless - cloud or water. Negligible pixel count.
+  # don't have a reference for this really.
+  r[r > 1] <- NA
+  return(r)
+}
 
-# define file paths
-image_file_evi <- 'veg_indices/evi/20170509_evi.tif'
-treemask_file <- 'tree_mask/tree_mask_species_map_4_inverse_buffered.tif'
-swamp_file <- 'swamp_shapefiles/swamp_clipped.shp'
+# rescale veg index data and change to integers
+rescale.to.integers <- function(r) {
+  r <- as.integer(r*100)
+  return(r)
+}
 
-# read in data
-evi_image <- open_band(image_file_evi)
-treemask <- open_band(treemask_file) # trees where treemask = 1
-swamp_shp <- readOGR(paste0(wd, swamp_file))
+# calculate texture metrics function with defaults
+calc.textures <- function(r, stats = c('homogeneity', 'variance'), n_grey = 101) {
+  r_textures <- glcm(r[[1]], window = c(3,3), n_grey = n_grey,
+                   shift = list(c(0,1), c(1,1), c(1,0), c(1,-1)),
+                   statistics = stats,
+                   min_x = 0, max_x = 100,
+                   na_opt = 'any', na_val = NA)
+  return(r_textures)
+}
 
-
-
-### Masking
-
-# swamp
-evi_image_masked <- mask(evi_image, mask = swamp_shp, inverse = TRUE)
-
-# trees
-evi_image_masked[!is.na(treemask)] <- NA
-
-
-### Prepare data
-
-# set values less than 0 to zero
-# ref: Farwell et al. pg.3
-evi_image_masked[evi_image_masked < 0] <- 0
-
-# set values > 1 to NA because meaningless - cloud or water. Negligible pixel count.
-# don't have a reference for this really.
-evi_image_masked[evi_image_masked > 1] <- NA
-
-# rescale data and change to integers
-evi_image_masked <- as.integer(evi_image_masked*100)
-
-
-
-#### GLCM calculation
-
-tic('glcm calculation, 3x3 window')
-evi_2017 <- glcm(evi_image_masked[[1]], window = c(3,3), n_grey = 101,
-                 shift = list(c(0,1), c(1,1), c(1,0), c(1,-1)),
-                 statistics = c('homogeneity', 'variance'),
-                 min_x = 0, max_x = 100,
-                 na_opt = 'center', na_val = NA)
-toc()
-
-
-##### 2018 #####
-
-image_file_evi <- 'veg_indices/evi/20180514_evi.tif'
-evi_image <- open_band(image_file_evi)
-
-# mask
-evi_image_masked <- mask(evi_image, mask = swamp_shp, inverse = TRUE)
-evi_image_masked[!is.na(treemask)] <- NA
-
-# prepare data
-evi_image_masked[evi_image < 0] <- 0
-evi_image_masked[evi_image > 1] <- NA
-
-# rescale
-evi_image_masked <- as.integer(evi_image_masked*100)
-
-tic('glcm calculation, 3x3 window')
-evi_2018 <- glcm(evi_image_masked[[1]], window = c(3,3), n_grey = 101,
-                 shift = list(c(0,1), c(1,1), c(1,0), c(1,-1)),
-                 statistics = c('homogeneity', 'variance'),
-                 min_x = 0, max_x = 100,
-                 na_opt = 'center', na_val = NA)
-toc()
-
-
-#### Subtract rasters
-
-# define function
+# function to difference two rasters
 diff_rasters <- function(r1, r2) {
   rout <- overlay(r1, r2,
                   fun = function(r1, r2) {return(r1 - r2)} )
   return(rout)
 }
 
-# do calculation
+
+
+#### Path definitions ####
+
+# define input file paths
+image_files_evi <- list('veg_indices/evi/20170509_evi.tif', 'veg_indices/evi/20180514_evi.tif')
+treemask_file <- 'tree_mask/tree_mask_species_map_4_inverse_buffered.tif'
+swamp_file <- 'swamp_shapefiles/swamp_clipped.shp'
+
+# define output file paths
+outpaths_2017 <- list('texture_metrics/from_evi/hmg_2017_rescaled_n100_any.tif',
+                      'texture_metrics/from_evi/var_2017_rescaled_n100_any.tif')
+outpaths_2018 <- list('texture_metrics/from_evi/hmg_2018_rescaled_n100_any.tif',
+                     'texture_metrics/from_evi/var_2018_rescaled_n100_any.tif')
+
+# open files the same for all years
+treemask <- open.band(treemask_file) # trees where treemask = 1
+swamp_shp <- readOGR(paste0(wd, swamp_file))
+
+
+#### Process Data ####
+
+# loop over years
+for (i in length(image_files_evi)) {
+  # read in evi data
+  evi_image <- open.band(image_files_evi[i])
+  
+  # repare Data for GLCM calculation
+  evi_image_prepped <- evi_image %>%
+    mask.raster.with.shp(swamp_shp) %>%
+    mask.raster.with.raster(treemask) %>%
+    rescale.outliers() %>%
+    rescale.to.integers
+  
+  # calculate texture metrics
+  tic('glcm calculation, 3x3 window')
+  evi_glcm <- calc.textures(evi_image_prepped)
+  toc()
+
+  # write out rasters
+  outpaths_list <- mapply(c, outpaths_2017, outpaths_2018)
+  
+  for (j in length(outpaths_2017)) {
+    writeRaster(evi_glcm[[j]], filename = paste0(wd, outpaths_list[i,j]),
+                format = 'GTiff', overwrite = TRUE)
+  }
+}
+
+
+#### Difference rasters ####
+
+# do calculation for homogeneity and variance
 diff_wet_dry_hmg <- diff_rasters(evi_2018$glcm_homogeneity, evi_2017$glcm_homogeneity)
 diff_wet_dry_var <- diff_rasters(evi_2018$glcm_variance, evi_2017$glcm_variance)
 
@@ -127,22 +142,10 @@ diff_wet_dry_var <- diff_rasters(evi_2018$glcm_variance, evi_2017$glcm_variance)
 #### Write out
 
 # define output file names
-outpath_hmg_2017 <- 'texture_metrics/from_evi/diff_2017_hmg_rescaled_n100.tif'
-outpath_var_2017 <- 'texture_metrics/from_evi/diff_2017_var_rescaled_n100.tif'
-outpath_hmg_2018 <- 'texture_metrics/from_evi/diff_2018_hmg_rescaled_n100.tif'
-outpath_var_2018 <- 'texture_metrics/from_evi/diff_2018_var_rescaled_n100.tif'
-outpath_hmg_diff <- 'texture_metrics/from_evi/diff_wet2018_minus_dry2017_hmg_rescaled_n100.tif'
-outpath_var_diff <- 'texture_metrics/from_evi/diff_wet2018_minus_dry2017_var_rescaled_n100.tif'
+outpath_hmg_diff <- 'texture_metrics/from_evi/diff_wet2018_minus_dry2017_hmg_rescaled_n100_any.tif'
+outpath_var_diff <- 'texture_metrics/from_evi/diff_wet2018_minus_dry2017_var_rescaled_n100_any.tif'
 
-# write out
-writeRaster(evi_2017$glcm_homogeneity, filename = paste0(wd, outpath_hmg_2017),
-            format = 'GTiff', overwrite = TRUE)
-writeRaster(evi_2017$glcm_variance, filename = paste0(wd, outpath_var_2017),
-            format = 'GTiff', overwrite = TRUE)
-writeRaster(evi_2018$glcm_homogeneity, filename = paste0(wd, outpath_hmg_2018),
-            format = 'GTiff', overwrite = TRUE)
-writeRaster(evi_2018$glcm_variance, filename = paste0(wd, outpath_var_2018),
-            format = 'GTiff', overwrite = TRUE)
+# write out rasters
 writeRaster(diff_wet_dry_hmg, filename = paste0(wd, outpath_hmg_diff),
             format = 'GTiff', overwrite = TRUE)
 writeRaster(diff_wet_dry_var, filename = paste0(wd, outpath_var_diff),
