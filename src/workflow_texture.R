@@ -93,9 +93,9 @@ treemask_file <- 'tree_mask/tree_mask_species_map_4_inverse_buffered.tif'
 swamp_file <- 'swamp_shapefiles/swamp_clipped.shp'
 
 # define output file paths
-outpaths_2017 <- list('texture_metrics/from_evi/hmg_2017_rescaled_n100_any.tif',
-                      'texture_metrics/from_evi/var_2017_rescaled_n100_any.tif')
-outpaths_2018 <- list('texture_metrics/from_evi/hmg_2018_rescaled_n100_any.tif',
+outpaths_hmg <- list('texture_metrics/from_evi/hmg_2017_rescaled_n100_any.tif',
+                     'texture_metrics/from_evi/hmg_2018_rescaled_n100_any.tif')
+outpaths_var <- list('texture_metrics/from_evi/var_2017_rescaled_n100_any.tif',
                      'texture_metrics/from_evi/var_2018_rescaled_n100_any.tif')
 
 # open files the same for all years
@@ -106,7 +106,7 @@ swamp_shp <- readOGR(paste0(wd, swamp_file))
 #### Process Data ####
 
 # loop over years
-for (i in length(image_files_evi)) {
+for (i in 1:length(image_files_evi)) {
   # read in evi data
   evi_image <- open.band(image_files_evi[i])
   
@@ -123,12 +123,12 @@ for (i in length(image_files_evi)) {
   toc()
 
   # write out rasters
-  outpaths_list <- mapply(c, outpaths_2017, outpaths_2018)
+  writeRaster(evi_glcm$glcm_homogeneity, filename = paste0(wd, outpaths_hmg[i]),
+              format = 'GTiff', overwrite = TRUE)
+  writeRaster(evi_glcm$glcm_variance, filename = paste0(wd, outpaths_var[i]),
+              format = 'GTiff', overwrite = TRUE)
   
-  for (j in length(outpaths_2017)) {
-    writeRaster(evi_glcm[[j]], filename = paste0(wd, outpaths_list[i,j]),
-                format = 'GTiff', overwrite = TRUE)
-  }
+  print
 }
 
 
