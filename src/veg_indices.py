@@ -253,7 +253,7 @@ def batch_veg_indices(inputdir, path_to_cloudmasks, aoi = None):
     infilelist_sorted = sort_list_by_date(inputfilelist)
 
     # create list of base dates for output file names
-    outfilelist = [os.path.basename(inputfile)[11:18] for inputfile in infilelist_sorted]
+    outfilelist = [os.path.basename(inputfile)[11:19] for inputfile in infilelist_sorted]
 
     # create list of cloudmasks, removing whitespace
     with open(path_to_cloudmasks) as f:
@@ -299,7 +299,7 @@ def sort_list_by_date(inlist):
     list_df = pd.DataFrame(inlist, columns = ['filename'])
 
     # create regular expression to search for dates
-    match = re.search(r'\d{4}\d{2}\d{2}', list_df['filename'][0])
+    #match = re.search(r'\d{4}\d{2}\d{2}', list_df['filename'][0])
 
     # define function to extract date
     def extract_date(string):
@@ -308,7 +308,8 @@ def sort_list_by_date(inlist):
         return date
 
     # create new date column
-    list_df['date'] = list_df.apply(lambda x: extract_date(x['filename']), axis = 1)
+    # list_df.apply(lambda x: extract_date(x['filename']), axis = 1)
+    list_df['date'] = list_df['filename'].apply(lambda x: extract_date(x))
     
     # sort df by date
     list_df = list_df.sort_values(by = 'date', ascending = False)

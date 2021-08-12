@@ -1,7 +1,7 @@
 '''
 A script to mask three tree species in a plant species map of the study area. Outputs a tif where nodata = 0 and data = 255 in GDAL RFC 15 style mask
 '''
-# %%
+
 import rasterio as rio
 from rasterio.enums import Resampling
 from matplotlib import pyplot as plt
@@ -10,17 +10,15 @@ from band_process import *
 import shutil
 from rasterio.io import MemoryFile
 
-# %%
+
 def tree_mask(file, outfile, aoi = None):
     '''
     A function outputs a tif representing tree species masked
     '''
-    # %%
-
-    aoi = '/Users/taracunningham/projects/dissertation/other_data/study_area_shapefile/study_area.geojson'
 
     tmp = shutil.copy(file, f'{file[:-4]}_copy.tif')
 
+    # %%
     # resample data to 10m resolution
     upscale_factor = 2
 
@@ -74,7 +72,7 @@ def tree_mask(file, outfile, aoi = None):
 
     # convert to masked array with species desired masked
     species_trees_masked = np.ma.array(species_map, mask = np.isin(species_map, [2, 4, 5, 6, 8, 9], invert = True))
-    
+    # %% 
     # set fill value to universal nodata value
     np.ma.set_fill_value(species_trees_masked, -9999)
 
@@ -139,13 +137,8 @@ def tree_mask_bool(file, aoi = None):
     return tree_mask_bool
 
     
+#######################################
 
-
-
-
-
-
-# %%
 if __name__ == "__main__":
     ''' Main block '''
 
@@ -156,5 +149,7 @@ if __name__ == "__main__":
     aoi = '/Users/taracunningham/projects/dissertation/other_data/study_area_shapefile/study_area.geojson'
 
     tree_mask(file, outfile, aoi = aoi)
+
+
 
 # %%

@@ -202,7 +202,6 @@ if __name__ == "__main__":
     #file = os.path.join(inputdir, filename)
     #cloud_fmask(file, outdir)
 
-    fmask_to_gdal_cloudmask('/Users/taracunningham/projects/dissertation/sen2processing/processing/fmask/S2A_MSIL1C_20200523T073621_N0209_R092_T36MZC_20200523T095431_cloud.tif', '/Users/taracunningham/projects/dissertation/sen2processing/processing/cloudmask/')
     
 
 

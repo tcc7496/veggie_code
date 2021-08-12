@@ -52,8 +52,15 @@ NDVI calculation for masking brown vegetation. Threshold still tbc. Starting poi
 
 '''
 
-# construct output names for ndvi files
+inputdir = '/Users/taracunningham/projects/dissertation/sen2processing/processing/l2a/'
 
+path_to_cloudmasks = '/Users/taracunningham/projects/dissertation/sen2processing/processing/cloudmasks.txt'
 
+batch_veg_indices(inputdir, path_to_cloudmasks, aoi = aoi)
 
-ndvi = ndvi_calc(filepath, cloudmask, outfile = outfile_ndvi, aoi = aoi)
+#######################################
+'''
+5 Texture Metrics
+
+'''
+
