@@ -14,6 +14,11 @@ library(ggplot2)
 library(mapproj)
 library(proj4)
 library(ggalt)
+library(sf)
+library(exactextractr)
+library(glue)
+library(purrr)
+library(stringr)
 
 
 #### Working Dir ####
@@ -27,7 +32,7 @@ setwd(wd)
 
 # open raster
 open.band <- function(band) {
-  band <- raster(paste0(wd, band))
+  band <- raster(band)
   # calc and save min and max values of raster to object
   band <- setMinMax(band)
   return(band)
@@ -116,6 +121,7 @@ calc.zonal.stats <- function(r, polygon, stats = c('min', 'max', 'count', 'mean'
 # paths for all calculations
 treemask_file <- 'tree_mask/tree_mask_species_map_4_inverse_buffered.tif'
 swamp_file <- 'swamp_shapefiles/swamp_clipped.shp'
+study_area <- '../../other_data/study_area_shapefile/study_area_shp_fixed_geoms.shp'
 
 # variables to go in filenames
 products = c('evi', 'b04', 'b08')
@@ -131,7 +137,8 @@ evi_fp <- file.path(wd, 'veg_indices', 'evi')
 evi_outdir <- file.path(wd, 'texture_metrics', 'from_evi')
 
 # get list of evi files
-evi_inputfilelist <- Sys.glob(file.path(test_filepath, "????????_evi.tif"))
+evi_inputfilelist <- Sys.glob(file.path(evi_fp, "????????_evi.tif"))
+#evi_inputfilelist <- c(file.path(evi_fp, '20210602_evi.tif'))
 
 # extract dates
 filenames_dates <- evi_inputfilelist %>%
@@ -144,72 +151,73 @@ outfilenames_list <- list()
 
 # loop over textures to create lists of output filepaths and names
 for (i in 1:length(textures)) {
+  # define output filepath for that texture
+  outpath_texture <- file.path(evi_outdir, glue('{textures[i]}'))
+  # check if directory exists and create it if not
+  if (!(dir.exists(outpath_texture))) {
+    dir.create(outpath_texture)
+    print(glue('Directory {outpath_texture} created.'))
+  }
+  # create list of output filenames for that texture
   outfilenames_list[[i]] <- filenames_dates %>%
     str_remove(pattern = ".tif") %>% # remove file ending
-    purrr::map(~ file.path(evi_outdir, glue('{textures[i]}'), glue('evi_{.}_{textures[i]}_n{levels}.tif'))) %>%
+    purrr::map(~ file.path(outpath_texture, glue('evi_{.}_{textures[i]}_n{levels}.tif'))) %>%
     unlist()
   names(outfilenames_list)[i] <- textures[i]
-  
 }
-
-
-# define output file paths
-outpaths_hmg <- list('texture_metrics/from_evi/hmg_2017_rescaled_to_eightbit_n256_any.tif',
-                     'texture_metrics/from_evi/hmg_2018_rescaled_to_eightbit_n256_any.tif')
-outpaths_var <- list('texture_metrics/from_evi/var_2017_rescaled_to_eightbit_n256_any.tif',
-                     'texture_metrics/from_evi/var_2018_rescaled_to_eightbit_n256_any.tif')
-
-# open files the same for all years
-treemask <- open.band(treemask_file) # trees where treemask = 1
-swamp_shp <- readOGR(paste0(wd, swamp_file))
 
 
 #### Process Data ####
 
-# loop over years
-for (i in 1:length(image_files_evi)) {
-  # read in evi data
-  evi_image <- open.band(image_files_evi[i])
+# open files the same for all years
+treemask <- open.band(treemask_file) # trees where treemask = 1
+swamp_shp <- readOGR(paste0(wd, swamp_file))
+study_area_shp <- readOGR(paste0(wd, study_area))
+
+# Loop over years
+for (i in 1:length(evi_inputfilelist)) {
   
-  # repare Data for GLCM calculation
+  # Read in evi data
+  evi_image <- open.band(evi_inputfilelist[i])
+  
+  # Prepare Data for GLCM calculation
   evi_image_prepped <- evi_image %>%
     mask.raster.with.shp(swamp_shp) %>%
     mask.raster.with.raster(treemask) %>%
     rescale.outliers() %>%
     rescale.to.eightbit
   
-  # calculate texture metrics
+  # testing
+  #x <- raster(ncol=5, nrow=6)
+  #values(x) <- 1:ncell(x)
+  
+  # Calculate texture metrics
   tic('glcm calculation, 3x3 window')
   evi_glcm <- calc.textures(evi_image_prepped, n_grey = 256)
+  #evi_glcm <- calc.textures(x, n_grey = 256)
   toc()
-
-  # write out rasters
-  writeRaster(evi_glcm$glcm_homogeneity, filename = paste0(wd, outpaths_hmg[i]),
-              format = 'GTiff', overwrite = TRUE)
-  writeRaster(evi_glcm$glcm_variance, filename = paste0(wd, outpaths_var[i]),
-              format = 'GTiff', overwrite = TRUE)
   
-  print
+  # create list of glcm outputs
+  glcm_out_list <- names(evi_glcm)
+  
+  # write out rasters by looping over textures
+  for (j in 1:length(names(evi_glcm))) {
+    writeRaster(evi_glcm[[j]],
+                filename = outfilenames_list[[j]][i],
+                format = 'GTiff', overwrite = TRUE)
+  }
+  
+  # Zonal Stats
+  # loop over evi_glcm rasterstack
+  for (k in 1:length(names(evi_glcm))) {
+    zonal_stats <- calc.zonal.stats(evi_glcm[[k]], study_area_shp)
+    # create output filepath
+    out_fp <- str_replace(outfilenames_list[[k]][i], 'tif', 'gpkg')
+    # write geopackage
+    st_write(zonal_stats, out_fp)
+  }
+  
 }
 
 
-#### Difference rasters ####
-
-# do calculation for homogeneity and variance
-diff_wet_dry_hmg <- diff_rasters(evi_2018$glcm_homogeneity, evi_2017$glcm_homogeneity)
-diff_wet_dry_var <- diff_rasters(evi_2018$glcm_variance, evi_2017$glcm_variance)
-
-
-#### Write out
-
-# define output file names
-outpath_hmg_diff <- 'texture_metrics/from_evi/diff_wet2018_minus_dry2017_hmg_rescaled_to_eightbit_n256_any.tif'
-outpath_var_diff <- 'texture_metrics/from_evi/diff_wet2018_minus_dry2017_var_rescaled_to_eightbit_n256_any.tif'
-
-# write out rasters
-# NB overwrites files if they already exist
-writeRaster(diff_wet_dry_hmg, filename = paste0(wd, outpath_hmg_diff),
-            format = 'GTiff', overwrite = TRUE)
-writeRaster(diff_wet_dry_var, filename = paste0(wd, outpath_var_diff),
-            format = 'GTiff', overwrite = TRUE)
 
