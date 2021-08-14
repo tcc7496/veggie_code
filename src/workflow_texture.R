@@ -69,7 +69,8 @@ rescale.to.integers <- function(r) {
 # rescale veg index data to 0-255 range and convert to integers
 # assumes range of veg. index is [0,1]
 rescale.to.eightbit <- function(r, rmin = 0, rmax = 1) {
-  r <- as.integer(round(f * 255.0))
+  r <- as.integer(round(r * 255.0))
+  return(r)
 }
 
 # calculate texture metrics function with defaults
@@ -77,7 +78,7 @@ calc.textures <- function(r, stats = c('homogeneity', 'variance'), n_grey = 101)
   r_textures <- glcm(r[[1]], window = c(3,3), n_grey = n_grey,
                    shift = list(c(0,1), c(1,1), c(1,0), c(1,-1)),
                    statistics = stats,
-                   min_x = 0, max_x = 100,
+                   min_x = 0, max_x = (n_grey - 1),
                    na_opt = 'any', na_val = NA)
   return(r_textures)
 }
@@ -89,14 +90,68 @@ diff_rasters <- function(r1, r2) {
   return(rout)
 }
 
+calc.zonal.stats <- function(r, polygon, stats = c('min', 'max', 'count', 'mean', 'median', 'stdev', 'quantile', 'coefficient_of_variation')) {
+  # calculate zonal stats on a raster within given polygons
+  # r: single layer raster
+  # polygon: sf or SpatialPolygon object containing one or more polygons
+  # stats: character vector of statistics to compute
+  # outputs the polygon sf object with an additional column for each statistic
+  
+  if (grepl('quantile', paste(stats, collapse = ''), fixed = TRUE)) {
+    stats_df <- cbind(
+      exact_extract(r, polygon, fun = stats, force_df = TRUE, quantiles = c(0.25, 0.75)),
+      polygon)
+  } else {
+    stats_df <- cbind(
+      exact_extract(r, polygon, fun = stats, force_df = TRUE),
+      polygon)
+  }
+  return(stats_df)
+}
+
 
 
 #### Path definitions ####
 
-# define input file paths
-image_files_evi <- list('veg_indices/evi/20170509_evi.tif', 'veg_indices/evi/20180514_evi.tif')
+# paths for all calculations
 treemask_file <- 'tree_mask/tree_mask_species_map_4_inverse_buffered.tif'
 swamp_file <- 'swamp_shapefiles/swamp_clipped.shp'
+
+# variables to go in filenames
+products = c('evi', 'b04', 'b08')
+textures = c('hmg', 'var')
+n_grey = 101
+levels = n_grey - 1
+
+### EVI
+
+# define evi input file path
+evi_fp <- file.path(wd, 'veg_indices', 'evi')
+# set output directory for calucations from evi
+evi_outdir <- file.path(wd, 'texture_metrics', 'from_evi')
+
+# get list of evi files
+evi_inputfilelist <- Sys.glob(file.path(test_filepath, "????????_evi.tif"))
+
+# extract dates
+filenames_dates <- evi_inputfilelist %>%
+  basename() %>%
+  str_remove_all(pattern = c('evi|.tif|_')) # remove file ending
+
+
+# create empty list for output filenames
+outfilenames_list <- list()
+
+# loop over textures to create lists of output filepaths and names
+for (i in 1:length(textures)) {
+  outfilenames_list[[i]] <- filenames_dates %>%
+    str_remove(pattern = ".tif") %>% # remove file ending
+    purrr::map(~ file.path(evi_outdir, glue('{textures[i]}'), glue('evi_{.}_{textures[i]}_n{levels}.tif'))) %>%
+    unlist()
+  names(outfilenames_list)[i] <- textures[i]
+  
+}
+
 
 # define output file paths
 outpaths_hmg <- list('texture_metrics/from_evi/hmg_2017_rescaled_to_eightbit_n256_any.tif',
@@ -157,3 +212,4 @@ writeRaster(diff_wet_dry_hmg, filename = paste0(wd, outpath_hmg_diff),
             format = 'GTiff', overwrite = TRUE)
 writeRaster(diff_wet_dry_var, filename = paste0(wd, outpath_var_diff),
             format = 'GTiff', overwrite = TRUE)
+
