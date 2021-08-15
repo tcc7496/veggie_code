@@ -101,15 +101,16 @@ calc.zonal.stats <- function(r, polygon, stats = c('min', 'max', 'count', 'mean'
   # polygon: sf or SpatialPolygon object containing one or more polygons
   # stats: character vector of statistics to compute
   # outputs the polygon sf object with an additional column for each statistic
-  
   if (grepl('quantile', paste(stats, collapse = ''), fixed = TRUE)) {
     stats_df <- cbind(
-      exact_extract(r, polygon, fun = stats, force_df = TRUE, quantiles = c(0.25, 0.75)),
-      polygon)
+      exact_extract(r, polygon, fun = stats, force_df = TRUE, quantiles = c(0.25, 0.75), stack_apply = T),
+      LandUse = polygon$LandUse) %>%
+      merge(polygon, .)
   } else {
     stats_df <- cbind(
-      exact_extract(r, polygon, fun = stats, force_df = TRUE),
-      polygon)
+      exact_extract(r, polygon, fun = stats, force_df = TRUE, stack_apply = T),
+      LandUse = polygon$LandUse) %>%
+      merge(polygon, .)
   }
   return(stats_df)
 }
@@ -126,7 +127,7 @@ study_area <- '../../other_data/study_area_shapefile/study_area_shp_fixed_geoms.
 # variables to go in filenames
 products = c('evi', 'b04', 'b08')
 textures = c('hmg', 'var')
-n_grey = 101
+n_grey = 256
 levels = n_grey - 1
 
 ### EVI
@@ -171,8 +172,8 @@ for (i in 1:length(textures)) {
 
 # open files the same for all years
 treemask <- open.band(treemask_file) # trees where treemask = 1
-swamp_shp <- readOGR(paste0(wd, swamp_file))
-study_area_shp <- readOGR(paste0(wd, study_area))
+swamp_shp <- readOGR(swamp_file)
+study_area_shp <- st_read(study_area)
 
 # Loop over years
 for (i in 1:length(evi_inputfilelist)) {
@@ -193,7 +194,7 @@ for (i in 1:length(evi_inputfilelist)) {
   
   # Calculate texture metrics
   tic('glcm calculation, 3x3 window')
-  evi_glcm <- calc.textures(evi_image_prepped, n_grey = 256)
+  evi_glcm <- calc.textures(evi_image_prepped, n_grey = n_grey)
   #evi_glcm <- calc.textures(x, n_grey = 256)
   toc()
   
