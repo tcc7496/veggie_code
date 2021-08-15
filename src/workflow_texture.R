@@ -220,5 +220,38 @@ for (i in 1:length(evi_inputfilelist)) {
   
 }
 
+## Analysing Zonal Stats for EVI
+
+# filepath to folder where zonal stats are stored
+evi_hmg_fp <- 'texture_metrics/from_evi/hmg/'
+
+# create list of input files and list of years. Sort to make sure they're in the same order
+inputfile_list_hmg_zs <- Sys.glob(file.path(wd, evi_hmg_fp, "*.gpkg")) %>%
+  str_sort(numeric = T)
+
+year_list <- c('2021', '2020', '2019', '2018', '2017', '2016') %>%
+  str_sort(numeric = T)
+
+# open study area as sf object to obtain crs
+study_area_sf <- st_read(study_area_path)
+# create empty sf object
+merged_sf <- st_sf(st_sfc())
+# set crs of merged_sf to that of study area sf
+st_crs(merged_sf) <- st_crs(study_area_sf)
+
+# loop over years and combine into single sf dataframe
+for (i in 1:length(inputfile_list_hmg_zs)) {
+  zonal_stats_sf <- st_read(inputfile_list_hmg_zs[i]) %>%
+    dplyr::select('LandUse', 'min', 'max', 'count', 'mean', 'median', 'stdev', 'q25', 'q75', 'coefficient_of_variation', 'geom') %>%
+    dplyr::mutate('year' = year_list[i])
+  merged_sf <- rbind(merged_sf, zonal_stats_sf)
+}
+
+# convert LandUse to factor for plotting
+merged_sf$LandUse <- as.factor(hmg_zonal_stats_sf$LandUse)
+
+merged_sf_minus_buffer <- merged_sf %>%
+  dplyr::filter(LandUse != c('Buffer Zone'))
+
 
 
