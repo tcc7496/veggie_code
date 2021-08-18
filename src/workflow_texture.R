@@ -20,6 +20,10 @@ library(glue)
 library(purrr)
 library(stringr)
 library(lme4)
+library(nlme)
+library(glmm)
+library(tibble)
+library(patchwork)
 
 
 #### Working Dir ####
@@ -214,20 +218,7 @@ calc.textures.from.evi.batch <- function (
                   filename = outfilenames_list[[j]][i],
                   format = 'GTiff', overwrite = TRUE)
     }
-    
-    ## Zonal Stats
-    
-    # loop over evi_glcm rasterstack
-    for (k in 1:length(names(evi_glcm))) {
-      zonal_stats <- calc.zonal.stats(evi_glcm[[k]], study_area_shp)
-      # create output filepath
-      out_fp <- str_replace(outfilenames_list[[k]][i], 'tif', 'gpkg')
-      # write geopackage
-      st_write(zonal_stats, out_fp)
-    }
-    
   }
-  
 }
 
 calc.zonal.stats.batch <- function (inputdir, outfile, aoi, rescale_outliers = c(0.02, 0.98)) {
@@ -240,7 +231,7 @@ calc.zonal.stats.batch <- function (inputdir, outfile, aoi, rescale_outliers = c
   
   # get list of input files
   inputfilelist <- Sys.glob(file.path(inputdir, "*.tif")) %>%
-    str_sort(numeric = T)
+    str_sort(numeric = T)Nor
  
    # create year last
   year_list <- c('2021', '2020', '2019', '2018', '2017', '2016') %>%
@@ -276,6 +267,113 @@ calc.zonal.stats.batch <- function (inputdir, outfile, aoi, rescale_outliers = c
   return(zs_sf)
 }
   
+extract.values.by.polygon.batch <- function (
+  inputdir, aoi, same_pixels = T, normalise = F) {
+  ## Inputs
+  # inputdir: path to input directory of raster files
+  # aoi: path to shapefile containing polygons to extract values within
+  # same_pixels: If true, selects only pixels that are not NA for every year
+  # normalise: If true, normalises pixels to the mean value of Landuse over all years
+  
+  # read in shapefile
+  polys <- st_read(aoi) %>%
+    dplyr::select('LandUse', 'geometry')
+  
+  # obtain list of input files
+  inputfilelist = Sys.glob(file.path(inputdir, "*.tif")) %>%
+    str_sort(numeric = T)
+  
+  # create stack of files
+  s <- raster::stack(inputfilelist)
+  
+  # extract raster values per polygon
+  values_per_landuse <- raster::extract(s, polys, df = T)
+  
+  # tidy data and convert to longform dataframe
+  values_per_landuse_tidy_cp <- values_per_landuse %>%
+    setNames(c('id', 'x2016', 'x2017', 'x2018', 'x2019', 'x2020', 'x2021')) %>%
+    # convert landuse ID column to names of landuse
+    dplyr::mutate(LandUse =
+                    dplyr::case_when(id == 1 ~ polys$LandUse[1],
+                                     id == 2 ~ polys$LandUse[2])
+    ) %>%
+    dplyr::select(-id) %>%
+    # add pixel id as column
+    tibble::rowid_to_column("pixel_id")
+  
+  
+  if (normalise == T) {
+    # find mean value of homogeneity per landuse across all years
+    mean_per_landuse <- values_per_landuse_tidy_cp %>%
+      pivot_longer(cols = starts_with("x"), names_to = "year") %>%
+      dplyr::group_by(LandUse) %>%
+      dplyr::summarise(mean = mean(value, na.rm = T))
+    
+    # Normalise values of homogeneity to calculated mean values / landuse
+    values_per_landuse_tidy_cp <- values_per_landuse_tidy_cp %>%
+      pivot_longer(cols =  starts_with("x"), names_to = "year") %>%
+      dplyr::mutate(value_norm =
+                      dplyr::case_when(LandUse == mean_per_landuse$LandUse[1]
+                                       ~ value / mean_per_landuse$mean[1],
+                                       LandUse == mean_per_landuse$LandUse[2]
+                                       ~ value / mean_per_landuse$mean[2])
+                    )
+  }
+  
+    # remove NA observations
+    values_per_landuse_tidy_cp_na <- values_per_landuse_tidy_cp %>%
+      dplyr::group_by(pixel_id) %>%
+      dplyr::summarise(number_of_na = sum(is.na(value))) %>%
+      dplyr::right_join(values_per_landuse_tidy_cp, by = 'pixel_id') %>%
+      # remove pixels that have NA observations in any year
+      {if (same_pixels == T) dplyr::filter(., number_of_na == 0) else . } %>%
+      # remove pixels with NA observations for all years
+      {if (same_pixels == F) dplyr::filter(., number_of_na < 6) else . } %>%
+      dplyr::select(-number_of_na)
+  
+  return(values_per_landuse_tidy_cp_na)
+}
+
+sample.df <- function (df, n_sample, seed_n = 42) {
+  # df: dataframe of texture metrics with landuse and year
+  # n_sample: can be a single number or vector of two numbers.
+  #           If a single number, no. of pixels sampled from each landuse per year
+  #           If vector, they correspond to the number of pixels from each landuse area:
+  #           c(n1, n2) <- (Livestock Rearing Area, Conservancy)
+  # seed_n: seed number for reproducability
+  
+  set.seed(seed_n)
+  
+  df_nested <- df %>%
+    dplyr::group_by(LandUse, pixel_id) %>%
+    tidyr::nest() %>%
+    dplyr::ungroup() %>%
+    dplyr::group_by(LandUse) %>%
+    tidyr::nest() %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(n = n_sample)
+  
+  df_sample <- df_nested %>%
+    dplyr::mutate(samp = map2(data, n, dplyr::sample_n)) %>%
+    dplyr::select(-data) %>%
+    tidyr::unnest(cols = samp) %>%
+    tidyr::unnest(cols = data)
+  
+  return(df_sample)
+}
+
+convert.dtpyes.for.plot <- function (df) {
+  # Convert pixel_id and LandUse to factors
+  df$pixel_id <- as.factor(df$pixel_id)
+  df$LandUse <- as.factor(df$LandUse)
+  
+  # Convert year to numeric
+  df <- df %>%
+    tidyr::separate(col = year, into = c(NA, 'year'), sep = 1)
+  df$year <- as.numeric(df$year)
+  
+  return(df)
+}
 
 #### Calc Texture Metrics and Zonal Stats from EVI ####
 
@@ -285,7 +383,7 @@ calc.zonal.stats.batch <- function (inputdir, outfile, aoi, rescale_outliers = c
 evi_fp <- file.path('veg_indices', 'evi') # location of evi files to process
 treemask_file <- 'tree_mask/tree_mask_species_map_4_inverse_buffered.tif'
 swamp_file <- 'swamp_shapefiles/swamp_clipped.shp'
-study_area <- '../../other_data/study_area_shapefile/study_area_shp_fixed_geoms.shp'
+study_area <- '../../other_data/study_area_shapefile/study_area_buffer_aggr_w_conservancy.shp'
 evi_outdir <- file.path('texture_metrics', 'from_evi')
 
 # define other inputs for glcm calculation
@@ -314,6 +412,131 @@ outfile <- paste0(inputdir, 'zs_from_evi.gpkg')
 #                        aoi = study_area
 #                        )
 
+
+## Extract all raster values per polygon
+
+# call function
+# values_per_landuse_norm <- extract.values.by.polygon.batch(
+#   inputdir = hmg_fp,
+#   aoi = study_area,
+#   same_pixels = T,
+#   normalise = T
+#   )
+# 
+# # check number of pixels per landuse
+# pixels_per_landuse <- values_per_landuse_norm %>%
+#   dplyr::group_by(LandUse) %>%
+#   dplyr::summarize(count = dplyr::n())
+
+# Conservancy: 119976
+# Livestock Rearing Area: 2674902
+# Loads! 12 km2 of pixels still
+
+## Sample dataframe for plotting
+
+# number of sample pixels per landuse per year.
+# total number of data points will be 6 times the sum
+n = c(100, 100)
+
+hmg_per_landuse_norm_sample1 <- 
+  sample.df(values_per_landuse_norm, n_sample = n, seed_n = 42) %>%
+  convert.dtpyes.for.plot()
+hmg_per_landuse_norm_sample2 <- 
+  sample.df(values_per_landuse_norm, n_sample = n, seed_n = 123) %>%
+  convert.dtpyes.for.plot()
+hmg_per_landuse_norm_sample3 <-
+  sample.df(values_per_landuse_norm, n_sample = n, seed_n = 74) %>%
+  convert.dtpyes.for.plot()
+hmg_per_landuse_norm_sample4 <-
+  sample.df(values_per_landuse_norm, n_sample = n, seed_n = 4834) %>%
+  convert.dtpyes.for.plot()
+
+# check the number of points per landuse is indeed equal
+pixels_per_landuse_sample <- hmg_per_landuse_norm_sample %>%
+   dplyr::group_by(LandUse) %>%
+   dplyr::summarize(count = dplyr::n())
+# it is indeed
+
+
+## Plot data
+
+# rescale year to start at 0
+#hmg_per_landuse_norm_sample$year <-
+#  hmg_per_landuse_norm_sample$year - min(hmg_per_landuse_norm_sample$year)
+
+p1 <- ggplot(hmg_per_landuse_norm_sample1, 
+       aes(x = year, y = value_norm,
+           color = LandUse, shape = LandUse, group = pixel_id)) + 
+  geom_point(alpha = 0.5) +
+  geom_line(aes(color = LandUse), alpha = 0.2) +
+  theme_bw()
+
+p2 <- ggplot(hmg_per_landuse_norm_sample2, 
+             aes(x = year, y = value_norm,
+                 color = LandUse, shape = LandUse, group = pixel_id)) + 
+  geom_point(alpha = 0.5) +
+  geom_line(aes(color = LandUse), alpha = 0.2) +
+  theme_bw()
+p3 <- ggplot(hmg_per_landuse_norm_sample3, 
+             aes(x = year, y = value_norm,
+                 color = LandUse, shape = LandUse, group = pixel_id)) + 
+  geom_point(alpha = 0.5) +
+  geom_line(aes(color = LandUse), alpha = 0.2) +
+  theme_bw()
+p4 <- ggplot(hmg_per_landuse_norm_sample4, 
+             aes(x = year, y = value_norm,
+                 color = LandUse, shape = LandUse, group = pixel_id)) + 
+  geom_point(alpha = 0.5) +
+  geom_line(aes(color = LandUse), alpha = 0.2) +
+  theme_bw()
+
+combined <- p1 + p2 + p3 + p4 +
+  plot_layout(guides = "collect") & theme(legend.position = "bottom")
+combined
+
+# save image
+ggsave('test2.png', width = 8.82, height = 6.67, units = 'in', dpi = 300)
+
+
+## Modelling
+
+tic('Simple ANOVA run against LandUse')
+hmg_anova <- aov(value ~ LandUse, data = hmg_values_per_landuse_tidy)
+toc()
+summary(hmg_anova)
+
+tic('Linear Mixed Model')
+hmg.lmer <- lmer(value ~ LandUse + (1|year), data = hmg_values_per_landuse_tidy)
+toc()
+summary(hmg.lmer)
+
+## Linear Mixed Effects Model - NLME package
+# incorporates temporal autocorrelation
+
+
+
+
+
+
+## GLMM
+
+# convert values column to natural numbers for compatability with package
+values_per_landuse_glmm <- hmg_values_per_landuse_tidy %>%
+  dplyr::mutate(values_nat = as.integer(value * 1000))
+
+tic('GLMM')
+hmg.glmm <- glmm(value_nat ~ LandUse, random = list(0 ~ year),
+                 varcomps.names = c("year"),
+                 data = values_per_landuse_glmm,
+                 family.glmm = poisson.glmm,
+                 m = 100,
+                 debug = T)
+toc()
+summary(hmg.glmm)
+
+glmm(Mate ~ 0 + Cross, random = list(~ 0 + Female,
+                                     ~ 0 + Male), varcomps.names = c("F", "M"), data = salamander,
+     family.glmm = bernoulli.glmm, m = 10^4, debug = TRUE)
 
 
 ## Analysing Zonal Stats for EVI
