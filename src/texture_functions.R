@@ -261,6 +261,10 @@ extract.values.by.polygon.batch <- function (
   # create stack of files
   s <- raster::stack(inputfilelist)
   
+  # rescale outliers
+  # apply rescale.outliers function to one layer at a time and restack result
+  s <- stack(lapply(1:nlayers(s), function(i){rescale.outliers.probs(s[[i]])}))
+  
   # extract raster values per polygon
   values_per_landuse <- raster::extract(s, polys, df = T)
   

@@ -48,12 +48,13 @@ treemask_file <- 'tree_mask/tree_mask_species_map_4_inverse_buffered.tif'
 swamp_file <- 'swamp_shapefiles/swamp_clipped.shp'
 study_area <- '../../other_data/study_area_shapefile/study_area_buffer_aggr_w_conservancy.shp'
 evi_outdir <- file.path('texture_metrics', 'from_evi')
+evi_outdir_perc <- file.path('texture_metrics', 'from_evi_perc')
 
 # define other inputs for glcm calculation
-textures = c('hmg', 'var')
-n_grey = 256
-
-# call function to do calculations
+# textures = c('hmg')
+# n_grey = 256
+# 
+# # call function to do calculations
 # calc.textures.from.evi.batch(
 #   textures = textures,
 #   n_grey = 256,
@@ -66,8 +67,8 @@ n_grey = 256
 
 ## Zonal Stats
 
-hmg_fp <- 'texture_metrics/from_evi/hmg/'
-outfile <- paste0(inputdir, 'zs_from_evi.gpkg')
+#hmg_fp <- 'texture_metrics/from_evi/hmg/'
+#outfile <- paste0(inputdir, 'zs_from_evi.gpkg')
 
 # call function to calculate zonal stats
 # zs_sf <- calc.zonal.stats.batch(inputdir = hmg_fp,
@@ -78,24 +79,25 @@ outfile <- paste0(inputdir, 'zs_from_evi.gpkg')
 
 ## Extract all raster values per polygon
 
-outfile = paste0(hmg_fp, 'hmg_per_landuse_normalised.csv')
+inputdir = 'texture_metrics/from_evi/hmg/'
+outfile = paste0(inputdir, 'hmg_per_landuse_normalised_outliers_rm.csv')
 
 # call function
-# values_per_landuse_norm <- extract.values.by.polygon.batch(
-#   inputdir = hmg_fp,
-#   outfile = outfile,
-#   aoi = study_area,
-#   same_pixels = T,
-#   normalise = T
-#   )
+values_per_landuse_norm <- extract.values.by.polygon.batch(
+  inputdir = hmg_fp,
+  outfile = outfile,
+  aoi = study_area,
+  same_pixels = T,
+  normalise = T
+  )
 
 # write file manually
 # write.csv2(values_per_landuse_norm, file = outfile)
 
 # check number of pixels per landuse
-pixels_per_landuse <- values_per_landuse_norm %>%
-  dplyr::group_by(LandUse, year) %>%
-  dplyr::summarize(count = dplyr::n())
+# pixels_per_landuse <- values_per_landuse_norm %>%
+#   dplyr::group_by(LandUse, year) %>%
+#   dplyr::summarize(count = dplyr::n())
 
 # Conservancy: 19996
 # Livestock Rearing Area: 445817
@@ -107,20 +109,20 @@ pixels_per_landuse <- values_per_landuse_norm %>%
 # number of sample pixels per landuse per year.
 # total number of data points will be 6 times the sum
 # to use all datapoints in conservancy, use n = 19996
-n = c(100, 100)
-
-hmg_per_landuse_norm_sample1 <- 
-  sample.df(values_per_landuse_norm, n_sample = n, seed_n = 42) %>%
-  convert.dtpyes.for.plot()
-hmg_per_landuse_norm_sample2 <- 
-  sample.df(values_per_landuse_norm, n_sample = n, seed_n = 123) %>%
-  convert.dtpyes.for.plot()
-hmg_per_landuse_norm_sample3 <-
-  sample.df(values_per_landuse_norm, n_sample = n, seed_n = 74) %>%
-  convert.dtpyes.for.plot()
-hmg_per_landuse_norm_sample4 <-
-  sample.df(values_per_landuse_norm, n_sample = n, seed_n = 4834) %>%
-  convert.dtpyes.for.plot()
+# n = c(100, 100)
+# 
+# hmg_per_landuse_norm_sample1 <- 
+#   sample.df(values_per_landuse_norm, n_sample = n, seed_n = 42) %>%
+#   convert.dtpyes.for.plot()
+# hmg_per_landuse_norm_sample2 <- 
+#   sample.df(values_per_landuse_norm, n_sample = n, seed_n = 123) %>%
+#   convert.dtpyes.for.plot()
+# hmg_per_landuse_norm_sample3 <-
+#   sample.df(values_per_landuse_norm, n_sample = n, seed_n = 74) %>%
+#   convert.dtpyes.for.plot()
+# hmg_per_landuse_norm_sample4 <-
+#   sample.df(values_per_landuse_norm, n_sample = n, seed_n = 4834) %>%
+#   convert.dtpyes.for.plot()
 
 # check the number of points per landuse is indeed equal
 # pixels_per_landuse_sample <- hmg_per_landuse_norm_sample %>%
@@ -135,43 +137,43 @@ hmg_per_landuse_norm_sample4 <-
 #hmg_per_landuse_norm_sample$year <-
 #  hmg_per_landuse_norm_sample$year - min(hmg_per_landuse_norm_sample$year)
 
-p1 <- ggplot(hmg_per_landuse_norm_sample1, 
-       aes(x = year, y = value_norm,
-           color = LandUse, shape = LandUse, group = pixel_id)) + 
-  #geom_point(alpha = 0.5) +
-  geom_line(aes(color = LandUse), alpha = 0.05, size = 0.1) +
-  facet_wrap(~ LandUse)
-  #theme_bw()
-p1
-p2 <- ggplot(hmg_per_landuse_norm_sample2, 
-             aes(x = year, y = value_norm,
-                 color = LandUse, shape = LandUse, group = pixel_id)) + 
-  #geom_point(alpha = 0.5) +
-  geom_line(aes(color = pixel_id), alpha = 0.2) +
-  facet_wrap(~ LandUse) +
-  theme_bw() +
-  theme(legend.position = 'none')
-p2
-p3 <- ggplot(hmg_per_landuse_norm_sample3, 
-             aes(x = year, y = value_norm,
-                 color = LandUse, shape = LandUse, group = pixel_id)) + 
-  geom_point(alpha = 0.5) +
-  geom_line(aes(color = LandUse), alpha = 0.2) +
-  theme_bw()
-p4 <- ggplot(hmg_per_landuse_norm_sample4, 
-             aes(x = year, y = value_norm,
-                 color = LandUse, shape = LandUse, group = pixel_id)) + 
-  geom_point(alpha = 0.5) +
-  geom_line(aes(color = LandUse), alpha = 0.2) +
-  theme_bw()
-
-combined <- p1 + p2 + p3 + p4 +
-  plot_layout(guides = "collect") & theme(legend.position = "bottom")
-combined
-
-# save image
-ggsave('hmg_per_landuse_10000.png', width = 8.82, height = 3.33, units = 'in', dpi = 300)
-dev.off()
+# p1 <- ggplot(hmg_per_landuse_norm_sample1, 
+#        aes(x = year, y = value_norm,
+#            color = LandUse, shape = LandUse, group = pixel_id)) + 
+#   #geom_point(alpha = 0.5) +
+#   geom_line(aes(color = LandUse), alpha = 0.05, size = 0.1) +
+#   facet_wrap(~ LandUse)
+#   #theme_bw()
+# p1
+# p2 <- ggplot(hmg_per_landuse_norm_sample2, 
+#              aes(x = year, y = value_norm,
+#                  color = LandUse, shape = LandUse, group = pixel_id)) + 
+#   #geom_point(alpha = 0.5) +
+#   geom_line(aes(color = pixel_id), alpha = 0.2) +
+#   facet_wrap(~ LandUse) +
+#   theme_bw() +
+#   theme(legend.position = 'none')
+# p2
+# p3 <- ggplot(hmg_per_landuse_norm_sample3, 
+#              aes(x = year, y = value_norm,
+#                  color = LandUse, shape = LandUse, group = pixel_id)) + 
+#   geom_point(alpha = 0.5) +
+#   geom_line(aes(color = LandUse), alpha = 0.2) +
+#   theme_bw()
+# p4 <- ggplot(hmg_per_landuse_norm_sample4, 
+#              aes(x = year, y = value_norm,
+#                  color = LandUse, shape = LandUse, group = pixel_id)) + 
+#   geom_point(alpha = 0.5) +
+#   geom_line(aes(color = LandUse), alpha = 0.2) +
+#   theme_bw()
+# 
+# combined <- p1 + p2 + p3 + p4 +
+#   plot_layout(guides = "collect") & theme(legend.position = "bottom")
+# combined
+# 
+# # save image
+# ggsave('hmg_per_landuse_10000.png', width = 8.82, height = 3.33, units = 'in', dpi = 300)
+# dev.off()
 
 ## Modelling
 
@@ -179,74 +181,74 @@ dev.off()
 ## Linear Mixed Effects Model - NLME package
 # incorporates temporal autocorrelation
 
-hmg.lme <- nlme::lme(value_norm ~ year + LandUse,
-                     random = list(~ 1 + year | LandUse/pixel_id),
-                     data = values_per_landuse_norm)
-
-
-
-
-## GLMM
-
-# convert values column to natural numbers for compatability with package
-values_per_landuse_glmm <- hmg_values_per_landuse_tidy %>%
-  dplyr::mutate(values_nat = as.integer(value * 1000))
-
-tic('GLMM')
-hmg.glmm <- glmm(value_nat ~ LandUse, random = list(0 ~ year),
-                 varcomps.names = c("year"),
-                 data = values_per_landuse_glmm,
-                 family.glmm = poisson.glmm,
-                 m = 100,
-                 debug = T)
-toc()
-summary(hmg.glmm)
-
-glmm(Mate ~ 0 + Cross, random = list(~ 0 + Female,
-                                     ~ 0 + Male), varcomps.names = c("F", "M"), data = salamander,
-     family.glmm = bernoulli.glmm, m = 10^4, debug = TRUE)
-
-
-## Analysing Zonal Stats for EVI
-
-# filepath to folder where zonal stats are stored
-zs_fp <- 'texture_metrics/from_evi/hmg/'
-zs_filename <- 'zs_from_evi.gpkg'
-
-
-## Divide stats by the mean of each year per LandUse
-
-# read in zonal stats
-zs_sf <- st_read(file.path(zs_fp, zs_filename))
-
-# convert LandUse to factor for plotting
-zs_sf$LandUse <- as.factor(zs_sf$LandUse)
-# convert year to numeric
-zs_sf$year <- as.character(zs_sf$year)
-
-zs_sf_mean_norm <- zs_sf %>%
-  dplyr::group_by(LandUse, year) %>%
-  dplyr::mutate(min_norm = min / mean,
-                max_norm = max / mean,
-                mean_norm = mean / mean,
-                median_norm = median / mean,
-                stdev_norm = stdev / mean,
-                q25_norm = q25 / mean,
-                q75_norm = q75 / mean) %>%
-  dplyr::ungroup() %>%
-  dplyr::select(-min, -max, -mean, -median, -stdev, -q25, -q75) %>%
-  dplyr::relocate(geom, .after = q75_norm)
-
-
-# plot normalised stats
-ggplot(zs_sf_mean_norm,
-       aes(x = year,
-           ymin = min_norm,
-           lower = q25_norm, middle = median_norm, upper = q75_norm,
-           ymax = max_norm,
-           fill = LandUse)) +
-  geom_boxplot(stat = 'identity')
-  geom_point(aes(x = year, y = mean, fill = LandUse))
-  
+# hmg.lme <- nlme::lme(value_norm ~ year + LandUse,
+#                      random = list(~ 1 + year | LandUse/pixel_id),
+#                      data = values_per_landuse_norm)
+# 
+# 
+# 
+# 
+# ## GLMM
+# 
+# # convert values column to natural numbers for compatability with package
+# values_per_landuse_glmm <- hmg_values_per_landuse_tidy %>%
+#   dplyr::mutate(values_nat = as.integer(value * 1000))
+# 
+# tic('GLMM')
+# hmg.glmm <- glmm(value_nat ~ LandUse, random = list(0 ~ year),
+#                  varcomps.names = c("year"),
+#                  data = values_per_landuse_glmm,
+#                  family.glmm = poisson.glmm,
+#                  m = 100,
+#                  debug = T)
+# toc()
+# summary(hmg.glmm)
+# 
+# glmm(Mate ~ 0 + Cross, random = list(~ 0 + Female,
+#                                      ~ 0 + Male), varcomps.names = c("F", "M"), data = salamander,
+#      family.glmm = bernoulli.glmm, m = 10^4, debug = TRUE)
+# 
+# 
+# ## Analysing Zonal Stats for EVI
+# 
+# # filepath to folder where zonal stats are stored
+# zs_fp <- 'texture_metrics/from_evi/hmg/'
+# zs_filename <- 'zs_from_evi.gpkg'
+# 
+# 
+# ## Divide stats by the mean of each year per LandUse
+# 
+# # read in zonal stats
+# zs_sf <- st_read(file.path(zs_fp, zs_filename))
+# 
+# # convert LandUse to factor for plotting
+# zs_sf$LandUse <- as.factor(zs_sf$LandUse)
+# # convert year to numeric
+# zs_sf$year <- as.character(zs_sf$year)
+# 
+# zs_sf_mean_norm <- zs_sf %>%
+#   dplyr::group_by(LandUse, year) %>%
+#   dplyr::mutate(min_norm = min / mean,
+#                 max_norm = max / mean,
+#                 mean_norm = mean / mean,
+#                 median_norm = median / mean,
+#                 stdev_norm = stdev / mean,
+#                 q25_norm = q25 / mean,
+#                 q75_norm = q75 / mean) %>%
+#   dplyr::ungroup() %>%
+#   dplyr::select(-min, -max, -mean, -median, -stdev, -q25, -q75) %>%
+#   dplyr::relocate(geom, .after = q75_norm)
+# 
+# 
+# # plot normalised stats
+# ggplot(zs_sf_mean_norm,
+#        aes(x = year,
+#            ymin = min_norm,
+#            lower = q25_norm, middle = median_norm, upper = q75_norm,
+#            ymax = max_norm,
+#            fill = LandUse)) +
+#   geom_boxplot(stat = 'identity')
+#   geom_point(aes(x = year, y = mean, fill = LandUse))
+#   
 
 
