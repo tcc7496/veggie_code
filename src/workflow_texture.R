@@ -40,7 +40,7 @@ source('../src/texture_functions.R')
 
 #### Calc Texture Metrics and Zonal Stats from EVI ####
 
-## Texture Metrics
+## Texture Metrics ----
 
 # define filepaths
 evi_fp <- file.path('veg_indices', 'evi') # location of evi files to process
@@ -65,7 +65,7 @@ evi_outdir_perc <- file.path('texture_metrics', 'from_evi_perc')
 #   outdir = evi_outdir
 #   )
 
-## Zonal Stats
+## Zonal Stats ----
 
 #hmg_fp <- 'texture_metrics/from_evi/hmg/'
 #outfile <- paste0(inputdir, 'zs_from_evi.gpkg')
@@ -77,19 +77,71 @@ evi_outdir_perc <- file.path('texture_metrics', 'from_evi_perc')
 #                        )
 
 
-## Extract all raster values per polygon
 
-inputdir = 'texture_metrics/from_evi/hmg/'
-outfile = paste0(inputdir, 'hmg_per_landuse_normalised_outliers_rm.csv')
+## Rescale outliers in hmg tifs and read out ----
 
-# call function
-values_per_landuse_norm <- extract.values.by.polygon.batch(
-  inputdir = hmg_fp,
-  outfile = outfile,
-  aoi = study_area,
-  same_pixels = T,
-  normalise = T
-  )
+inputdir = 'texture_metrics/from_evi/hmg/abs/'
+probs = c(0.02, 0.98)
+
+remove.hmg.outliers <- function (inputdir, probs) {
+  # A function to rescale the percentiles specified by probs in hmg rasters
+  # and write out the new rescaled file.
+  # output file will be the same as input file with _wo_outliers added to the end
+  inputfilelist <- Sys.glob(file.path(inputdir, '*.tif' )) %>%
+    str_sort(numeric = T)
+  
+  # create list of output files
+  outfilelist <- inputfilelist %>%
+    basename() %>%
+    str_remove_all(pattern = c('.tif')) %>%
+    paste0(inputdir, ., '_wo_outliers.tif')
+  
+  # loop over input files
+  for (i in 1:length(inputfilelist)) {
+    # open tif
+    r <- open.band(inputfilelist[i])
+    # rescale outliers
+    r_rescaled <- rescale.outliers.probs(r, probs = probs)
+    # write out tif
+    writeRaster(r_rescaled,
+                filename = outfilelist[i],
+                format = 'GTiff', overwrite = TRUE)
+    
+  }
+} 
+
+# function call
+remove.hmg.outliers(inputdir = inputdir, probs = probs)
+
+
+## Normalise values to mean per polygon in raster ----
+
+
+# to observe any trend over time visually between landuses
+
+inputdir = 'texture_metrics/from_evi/hmg/abs/'
+outputdir = 'texture_metrics/from_evi/hmg/norm/'
+statsfile <- 'zs_from_evi_abs.gpkg'
+meanfile <- '../landuse_normalised_values.csv'
+
+
+
+# function call
+calc.normalised.hmg.raster(inputdir, outputdir, statsfile, meanfile)
+
+## Extract all raster values per polygon ----
+
+# inputdir = 'texture_metrics/from_evi/hmg/abs/'
+# outfile = paste0(inputdir, 'hmg_per_landuse_normalised_outliers_rm2.csv')
+# 
+# # call function
+# values_per_landuse_norm <- extract.values.by.polygon.batch(
+#   inputdir = inputdir,
+#   outfile = outfile,
+#   aoi = study_area,
+#   same_pixels = T,
+#   normalise = T
+#   )
 
 # write file manually
 # write.csv2(values_per_landuse_norm, file = outfile)
@@ -104,7 +156,15 @@ values_per_landuse_norm <- extract.values.by.polygon.batch(
 # Loads! 2 km2 of pixels... maybe not so much
 
 
-## Sample dataframe for plotting
+## Rainfall data ----
+
+# inputdir <- '../original/rainfall/monthly/tifs/'
+# outfile <- 'rainfall/rainfall_sum_mar_to_june.csv'
+# 
+# rainfall_df <- calc.rainfall(inputdir, outfile)
+
+
+## Sample dataframe for plotting ----
 
 # number of sample pixels per landuse per year.
 # total number of data points will be 6 times the sum
@@ -131,7 +191,7 @@ values_per_landuse_norm <- extract.values.by.polygon.batch(
 # it is indeed
 
 
-## Plot data
+## Plot data ----
 
 # rescale year to start at 0
 #hmg_per_landuse_norm_sample$year <-

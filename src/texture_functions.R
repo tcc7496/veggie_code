@@ -99,7 +99,6 @@ calc.zonal.stats <- function(
   return(stats_df)
 }
 
-
 calc.textures.from.evi.batch <- function (
   textures, n_grey = 256, evi_fp, aoi_fp, treemask_fp, swamp_fp, outdir) {
   # Function to calculate texture metrics and zonal statistics on evi files
@@ -191,6 +190,35 @@ calc.textures.from.evi.batch <- function (
   }
 }
 
+remove.hmg.outliers <- function (inputdir, probs) {
+  # A function to rescale the percentiles specified by probs in hmg rasters
+  # and write out the new rescaled file.
+  # output file will be the same as input file with _wo_outliers added to the end
+  inputfilelist <- Sys.glob(file.path(inputdir, '*.tif' )) %>%
+    str_sort(numeric = T)
+  
+  # create list of output files
+  outfilelist <- inputfilelist %>%
+    basename() %>%
+    str_remove_all(pattern = c('.tif')) %>%
+    paste0(inputdir, ., '_wo_outliers.tif')
+  
+  # loop over input files
+  for (i in 1:length(inputfilelist)) {
+    # open tif
+    r <- open.band(inputfilelist[i])
+    # rescale outliers
+    r_rescaled <- rescale.outliers.probs(r, probs = probs)
+    # write out tif
+    writeRaster(r_rescaled,
+                filename = outfilelist[i],
+                format = 'GTiff', overwrite = TRUE)
+    
+  }
+}
+
+# if function above is run, don't need to have the rescale_outliers bit in this. Just read in the
+# intermediate rasters
 calc.zonal.stats.batch <- function (inputdir, outfile, aoi, rescale_outliers = c(0.02, 0.98)) {
   ## Inputs
   # inputdir: directory with input tifs. Will try and process all tifs
@@ -318,7 +346,99 @@ extract.values.by.polygon.batch <- function (
   # write out dataframe
   write.csv2(values_per_landuse_tidy_cp_na, file = outfile)
   
+  # write out mean values per landuse
+  write.csv2(mean_per_landuse, file = 'landuse_normalised_values.csv')
+  
   return(values_per_landuse_tidy_cp_na)
+}
+
+calc.normalised.hmg.raster <- function (inputdir, outputdir, statsfile, meanfile) {
+  # A function that outputs a raster normalised to the mean of each polygon across all years
+  # have mean/min/max per polygon per year without outliers
+  # read in zonal stats
+  stats_sf <- st_read(paste0(inputdir, statsfile))
+  
+  # read in normalised values per landuse
+  mean_df <- read.csv2(paste0(inputdir, meanfile))
+  
+  # get list of evi files in year
+  inputfilelist <- Sys.glob(file.path(inputdir, '*.tif' )) %>%
+    str_sort(numeric = T)
+  # create list of output files
+  outfilelist <- inputfilelist %>%
+    basename() %>%
+    str_remove_all(pattern = c('.tif')) %>%
+    paste0(outputdir, ., '_norm.tif')
+  
+  
+  # create year list
+  year_list <- c('2021', '2020', '2019', '2018', '2017', '2016') %>%
+    str_sort(numeric = T)
+  
+  # read in mean over years
+  # [1,3]: Conservancy, [2,3]: Livestock Rearing Area
+  mean_df <- read.csv2(paste0(inputdir, meanfile))
+  
+  
+  # loop over inputfile list
+  for (i in 1:length(inputfilelist)) {
+    
+    # open raster
+    r <- open.band(inputfilelist[i])
+    
+    # extract mean/min/max values from that year from stats for each LandUse
+    # gives list for each one where conservancy comes first
+    r_min_c <- stats_sf$min[stats_sf$year == as.numeric(year_list[i]) & stats_sf$LandUse == "Conservancy"]
+    r_min_g <- stats_sf$min[stats_sf$year == as.numeric(year_list[i]) & stats_sf$LandUse == "Livestock Rearing Area"]
+    r_max_c <- stats_sf$max[stats_sf$year == as.numeric(year_list[i]) & stats_sf$LandUse == "Conservancy"]
+    r_max_g <- stats_sf$max[stats_sf$year == as.numeric(year_list[i]) & stats_sf$LandUse == "Livestock Rearing Area"]
+    
+    # create copy of raster for each landuse
+    r_cp_1 <- r
+    r_cp_2 <- r
+    s <- raster::stack(r_cp_1, r_cp_2)
+    
+    ## Conservancy
+    c_poly <- as_Spatial(stats$geom[1])
+    
+    # mask Livestock Rearing area
+    s[[1]] <- mask(s[[1]], c_poly)
+    # set values below 0.02 min to min
+    s[[1]][s[[1]] < r_min_c] <- r_min_c
+    # set values above 0.98 max to max
+    s[[1]][s[[1]] > r_max_c] <- r_max_c
+    # divide by mean to normalize
+    s[[1]] <- s[[1]]/mean_df[1,3]
+    # change NA values to zeros for addition
+    s[[1]][is.na(s[[1]])] <- 0
+    
+    
+    ## Livestock Rearing Area
+    g_poly <- as_Spatial(stats$geom[2])
+    
+    # mask conservancy
+    s[[2]] <- mask(s[[2]], g_poly)
+    # set values below 0.02 min to min
+    s[[2]][s[[2]] < r_min_g] <- r_min_g
+    # set values above 0.98 max to max
+    s[[2]][s[[2]] > r_max_g] <- r_max_g
+    # divide by mean to normalize
+    s[[2]] <- s[[2]]/mean_df[2,3]
+    # change NA values to zeros for addition
+    s[[2]][is.na(s[[2]])] <- 0
+    
+    # sum rasters
+    r_new <- sum(s) # I think
+    
+    # set zero values back to NA
+    r_new[r_new == 0] <- NA
+    
+    # write out raster
+    writeRaster(r_new,
+                filename = outfilelist[i],
+                format = 'GTiff', overwrite = TRUE)
+    
+  }
 }
 
 sample.df <- function (df, n_sample, seed_n = 42) {
@@ -358,4 +478,60 @@ convert.dtpyes.for.plot <- function (df) {
   df$year <- as.numeric(df$year)
   
   return(df)
+}
+
+calc.rainfall <- function (inputdir, outfile) {
+  
+  year_list <- c('2021', '2020', '2019', '2018', '2017', '2016') %>%
+    str_sort(numeric = T)
+  
+  # open shapefile to get crs
+  study_area_shp <- st_read(study_area)
+  
+  # create empty df for results
+  rainfall_df <- data.frame(LandUse = character(),
+                            weighted_mean = double(),
+                            year = character())
+  
+  # loop over years
+  for (i in 1:length(year_list)) {
+    
+    # get files for one year
+    inputfilelist <- Sys.glob(file.path(inputdir, glue('*{year_list[i]}*.tif') ) )
+    
+    # stack raster files
+    s <- raster::stack(inputfilelist)
+    
+    # reproject rasterstack to study area crs
+    s_reproj <- projectRaster(s, crs = crs(study_area_shp))
+    
+    # crop rasterstack to study area
+    s_crop <- crop(s_reproj, study_area_shp, snap = "out")
+    
+    # sum raster stack
+    rain_crop_sum <- calc(s_crop, fun = sum)
+    
+    # extract average rainfall per polygon
+    rain_mean <- cbind(
+      exact_extract(rain_crop_sum, study_area_shp,
+                    fun = 'weighted_mean',
+                    weights = 'area',
+                    force_df = TRUE,
+                    #include_cols = c('LandUse'),
+                    progress = T),
+      LandUse = study_area_shp$LandUse) %>%
+      dplyr::mutate('year' = year_list[i]) # add year as a column
+    
+    # add it to zs_df
+    rainfall_df <- rbind(rainfall_df, rain_mean)
+  }
+  
+  # change name of weight_mean column
+  names(rainfall_df)[names(rainfall_df) == "weighted_mean"] <- "rain"
+    
+  # write out data
+  write.csv2(rainfall_df, file = outfile)
+    
+  return(rainfall_df)
+
 }
