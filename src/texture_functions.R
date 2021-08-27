@@ -354,7 +354,8 @@ extract.values.by.polygon.batch <- function (
 
 calc.normalised.hmg.raster <- function (inputdir, outputdir, statsfile, meanfile) {
   # A function that outputs a raster normalised to the mean of each polygon across all years
-  # have mean/min/max per polygon per year without outliers
+  # takes in rasters with hmg outliers (0.02, 0.98) removed
+  
   # read in zonal stats
   stats_sf <- st_read(paste0(inputdir, statsfile))
   
@@ -362,14 +363,13 @@ calc.normalised.hmg.raster <- function (inputdir, outputdir, statsfile, meanfile
   mean_df <- read.csv2(paste0(inputdir, meanfile))
   
   # get list of evi files in year
-  inputfilelist <- Sys.glob(file.path(inputdir, '*.tif' )) %>%
+  inputfilelist <- Sys.glob(file.path(inputdir, '*wo_outliers.tif' )) %>%
     str_sort(numeric = T)
   # create list of output files
   outfilelist <- inputfilelist %>%
     basename() %>%
     str_remove_all(pattern = c('.tif')) %>%
-    paste0(outputdir, ., '_norm.tif')
-  
+    paste0(outputdir, ., '_norm2.tif')
   
   # create year list
   year_list <- c('2021', '2020', '2019', '2018', '2017', '2016') %>%
@@ -379,19 +379,11 @@ calc.normalised.hmg.raster <- function (inputdir, outputdir, statsfile, meanfile
   # [1,3]: Conservancy, [2,3]: Livestock Rearing Area
   mean_df <- read.csv2(paste0(inputdir, meanfile))
   
-  
   # loop over inputfile list
   for (i in 1:length(inputfilelist)) {
     
     # open raster
     r <- open.band(inputfilelist[i])
-    
-    # extract mean/min/max values from that year from stats for each LandUse
-    # gives list for each one where conservancy comes first
-    r_min_c <- stats_sf$min[stats_sf$year == as.numeric(year_list[i]) & stats_sf$LandUse == "Conservancy"]
-    r_min_g <- stats_sf$min[stats_sf$year == as.numeric(year_list[i]) & stats_sf$LandUse == "Livestock Rearing Area"]
-    r_max_c <- stats_sf$max[stats_sf$year == as.numeric(year_list[i]) & stats_sf$LandUse == "Conservancy"]
-    r_max_g <- stats_sf$max[stats_sf$year == as.numeric(year_list[i]) & stats_sf$LandUse == "Livestock Rearing Area"]
     
     # create copy of raster for each landuse
     r_cp_1 <- r
@@ -400,13 +392,8 @@ calc.normalised.hmg.raster <- function (inputdir, outputdir, statsfile, meanfile
     
     ## Conservancy
     c_poly <- as_Spatial(stats$geom[1])
-    
     # mask Livestock Rearing area
     s[[1]] <- mask(s[[1]], c_poly)
-    # set values below 0.02 min to min
-    s[[1]][s[[1]] < r_min_c] <- r_min_c
-    # set values above 0.98 max to max
-    s[[1]][s[[1]] > r_max_c] <- r_max_c
     # divide by mean to normalize
     s[[1]] <- s[[1]]/mean_df[1,3]
     # change NA values to zeros for addition
@@ -415,13 +402,8 @@ calc.normalised.hmg.raster <- function (inputdir, outputdir, statsfile, meanfile
     
     ## Livestock Rearing Area
     g_poly <- as_Spatial(stats$geom[2])
-    
     # mask conservancy
     s[[2]] <- mask(s[[2]], g_poly)
-    # set values below 0.02 min to min
-    s[[2]][s[[2]] < r_min_g] <- r_min_g
-    # set values above 0.98 max to max
-    s[[2]][s[[2]] > r_max_g] <- r_max_g
     # divide by mean to normalize
     s[[2]] <- s[[2]]/mean_df[2,3]
     # change NA values to zeros for addition

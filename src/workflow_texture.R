@@ -124,7 +124,9 @@ outputdir = 'texture_metrics/from_evi/hmg/norm/'
 statsfile <- 'zs_from_evi_abs.gpkg'
 meanfile <- '../landuse_normalised_values.csv'
 
-
+inputfilelist <- Sys.glob(file.path(inputdir, '*wo_outliers.tif' ))
+r1 <- open.band(paste0(outputdir, 'evi_20160514_hmg_n256_norm.tif'))
+r2 <- open.band(paste0(outputdir, 'evi_20160514_hmg_n256_wo_outliers_norm2.tif'))
 
 # function call
 calc.normalised.hmg.raster(inputdir, outputdir, statsfile, meanfile)
