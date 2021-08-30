@@ -14,7 +14,7 @@ open.band <- function(band) {
 mask.raster.with.shp <- function(r, shp) {
   # values within polygon are set to NA
   # polygon must be contained within raster
-  r_masked <- mask(r, mask = shp, inverse = TRUE)
+  r_masked <- raster::mask(r, mask = shp, inverse = TRUE)
   return(r_masked)
 }
 
@@ -283,7 +283,7 @@ extract.values.by.polygon.batch <- function (
     dplyr::select('LandUse', 'geometry')
   
   # obtain list of input files
-  inputfilelist = Sys.glob(file.path(inputdir, "*.tif")) %>%
+  inputfilelist = Sys.glob(file.path(inputdir, "*n256.tif")) %>%
     str_sort(numeric = T)
   
   # create stack of files
@@ -316,6 +316,9 @@ extract.values.by.polygon.batch <- function (
       dplyr::group_by(LandUse) %>%
       dplyr::summarise(mean = mean(value, na.rm = T))
     
+    # write out mean values per landuse
+    #write.csv2(mean_per_landuse, file = 'landuse_normalised_values.csv')
+    
     # Normalise values of homogeneity to calculated mean values / landuse
     values_per_landuse_tidy_cp <- values_per_landuse_tidy_cp %>%
       pivot_longer(cols =  starts_with("x"), names_to = "year") %>%
@@ -325,6 +328,10 @@ extract.values.by.polygon.batch <- function (
                                        LandUse == mean_per_landuse$LandUse[2]
                                        ~ value / mean_per_landuse$mean[2])
       )
+  } else {
+    # pivot df longer before completing rest of calculation if normalise = F
+    values_per_landuse_tidy_cp <- values_per_landuse_tidy_cp %>%
+      pivot_longer(cols =  starts_with("x"), names_to = "year")
   }
   
   # remove NA observations
@@ -345,9 +352,6 @@ extract.values.by.polygon.batch <- function (
   
   # write out dataframe
   write.csv2(values_per_landuse_tidy_cp_na, file = outfile)
-  
-  # write out mean values per landuse
-  write.csv2(mean_per_landuse, file = 'landuse_normalised_values.csv')
   
   return(values_per_landuse_tidy_cp_na)
 }

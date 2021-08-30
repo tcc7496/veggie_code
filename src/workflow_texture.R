@@ -83,39 +83,11 @@ evi_outdir_perc <- file.path('texture_metrics', 'from_evi_perc')
 inputdir = 'texture_metrics/from_evi/hmg/abs/'
 probs = c(0.02, 0.98)
 
-remove.hmg.outliers <- function (inputdir, probs) {
-  # A function to rescale the percentiles specified by probs in hmg rasters
-  # and write out the new rescaled file.
-  # output file will be the same as input file with _wo_outliers added to the end
-  inputfilelist <- Sys.glob(file.path(inputdir, '*.tif' )) %>%
-    str_sort(numeric = T)
-  
-  # create list of output files
-  outfilelist <- inputfilelist %>%
-    basename() %>%
-    str_remove_all(pattern = c('.tif')) %>%
-    paste0(inputdir, ., '_wo_outliers.tif')
-  
-  # loop over input files
-  for (i in 1:length(inputfilelist)) {
-    # open tif
-    r <- open.band(inputfilelist[i])
-    # rescale outliers
-    r_rescaled <- rescale.outliers.probs(r, probs = probs)
-    # write out tif
-    writeRaster(r_rescaled,
-                filename = outfilelist[i],
-                format = 'GTiff', overwrite = TRUE)
-    
-  }
-} 
-
 # function call
 remove.hmg.outliers(inputdir = inputdir, probs = probs)
 
 
 ## Normalise values to mean per polygon in raster ----
-
 
 # to observe any trend over time visually between landuses
 
@@ -124,26 +96,43 @@ outputdir = 'texture_metrics/from_evi/hmg/norm/'
 statsfile <- 'zs_from_evi_abs.gpkg'
 meanfile <- '../landuse_normalised_values.csv'
 
-inputfilelist <- Sys.glob(file.path(inputdir, '*wo_outliers.tif' ))
-r1 <- open.band(paste0(outputdir, 'evi_20160514_hmg_n256_norm.tif'))
-r2 <- open.band(paste0(outputdir, 'evi_20160514_hmg_n256_wo_outliers_norm2.tif'))
-
 # function call
 calc.normalised.hmg.raster(inputdir, outputdir, statsfile, meanfile)
 
+
 ## Extract all raster values per polygon ----
 
-# inputdir = 'texture_metrics/from_evi/hmg/abs/'
-# outfile = paste0(inputdir, 'hmg_per_landuse_normalised_outliers_rm2.csv')
-# 
-# # call function
-# values_per_landuse_norm <- extract.values.by.polygon.batch(
-#   inputdir = inputdir,
-#   outfile = outfile,
-#   aoi = study_area,
-#   same_pixels = T,
-#   normalise = T
-#   )
+# Do 2 runs, one with the only the same pixels across all the years, one without
+# If normalise = T, output csv has normal values too
+inputdir = 'texture_metrics/from_evi/hmg/abs/'
+outputdir_abs = inputdir
+outputdir_norm = 'texture_metrics/from_evi/hmg/norm/'
+
+# Run 1: same_pixels = T, normalise = T
+outfile1 = paste0(outputdir_norm, 'hmg_norm_same_pixels_T.csv')
+
+# call function
+values_per_landuse_norm <- extract.values.by.polygon.batch(
+  inputdir = inputdir,
+  outfile = outfile1,
+  aoi = study_area,
+  same_pixels = T,
+  normalise = T
+  )
+
+# Run 2: same_pixels = F, normalise = T
+outfile2 = paste0(outputdir_norm, 'hmg_norm_same_pixels_F.csv')
+
+# call function
+values_per_landuse_norm <- extract.values.by.polygon.batch(
+  inputdir = inputdir,
+  outfile = outfile2,
+  aoi = study_area,
+  same_pixels = F,
+  normalise = T
+)
+
+
 
 # write file manually
 # write.csv2(values_per_landuse_norm, file = outfile)
@@ -164,6 +153,77 @@ calc.normalised.hmg.raster(inputdir, outputdir, statsfile, meanfile)
 # outfile <- 'rainfall/rainfall_sum_mar_to_june.csv'
 # 
 # rainfall_df <- calc.rainfall(inputdir, outfile)
+
+
+## NDVI ----
+# calculate average NDVI across land use per year
+
+ndvi_fp = 'veg_indices/ndvi/'
+year_list
+
+# obtain list of ndvi files
+ndvi_file_list = Sys.glob(file.path(ndvi_fp, "????????_ndvi.tif")) %>%
+  str_sort(numeric = T)
+
+# open swamp shapefile and study area
+swamp_shp <- st_read(swamp_file)
+study_area_sf <- st_read(study_area_fp) %>%
+  dplyr::select('LandUse', 'geometry')
+
+# create stack of ndvi files
+ndvi_stack <- raster::stack(ndvi_file_list) %>%
+  # mask swamp to get remove main water
+  mask.raster.with.shp(swamp_shp)
+
+# remove values less than zero (corresponding to water)
+ndvi_stack[ndvi_stack < 0] = NA
+
+stats_list <- c('mean', 'stdev')
+# extract mean NDVI value per landuse
+# calculate mean within whole study area for each year
+ndvi_zs <- calc.zonal.stats(ndvi_stack, study_area_sf, stats = stats_list)
+colnames(ndvi_zs) <- c('LandUse', paste0(stats_list[1], '_', year_list),
+                       paste0(stats_list[2], '_', year_list), 'geometry')
+
+
+
+ndvi_zs <- ndvi_zs %>%
+  st_drop_geometry()
+
+# find difference in average NDVIs
+diff <- as.data.frame(ndvi_zs[1,2:7] - ndvi_zs[2,2:7])
+colnames(diff) <- str_replace(colnames(diff), 'mean', 'diff')
+
+ndvi_zs_test <- cbind(ndvi_zs, diff)
+ndvi_zs_test2 <- ndvi_zs_test %>%
+  tidyr::pivot_longer(cols = mean_2016:diff_2021,
+                      names_to = c("stat", "year"),
+                      names_sep = "_",
+                      names_repair = "unique",
+                      values_to = "value") %>%
+  tidyr::pivot_wider(names_from = stat,
+                      values_from = value)
+
+# set second round of difference to NA so it doesn't plot
+ndvi_zs_test2$diff[ndvi_zs_test2$LandUse == 'Conservancy'] <- NA
+  
+# plot bar chart of NDVI for each land Use
+ggplot(data = ndvi_zs_test2,
+       aes(x = year, y = mean, fill = LandUse)) +
+  geom_bar(stat = 'identity', position = position_dodge())
+
+# plot bar chart of difference
+ggplot(data = ndvi_zs_test2,
+       aes(x = year, y = diff)) +
+  geom_bar(stat = 'identity')
+
+# plot line graph of 1 - mean to compare shape to smooth in models
+ggplot(data = ndvi_zs_test2,
+       aes(x = year, y = mean, group = LandUse, colour = LandUse)) +
+  geom_line()
+
+# significant differences in NDVI across years
+
 
 
 ## Sample dataframe for plotting ----
@@ -271,11 +331,18 @@ calc.normalised.hmg.raster(inputdir, outputdir, statsfile, meanfile)
 #      family.glmm = bernoulli.glmm, m = 10^4, debug = TRUE)
 # 
 # 
-# ## Analysing Zonal Stats for EVI
+
+
+# this is the useless bit cause you need to divide by the average per landuse across all years
+# not just per year.
+
+## Analysing Homogeneity Zonal Stats
 # 
 # # filepath to folder where zonal stats are stored
-# zs_fp <- 'texture_metrics/from_evi/hmg/'
-# zs_filename <- 'zs_from_evi.gpkg'
+# zs_fp <- 'texture_metrics/from_evi/hmg/abs/'
+# zs_filename <- 'zs_from_evi_abs.gpkg'
+# zs_outfile_fp <- 'texture_metrics/from_evi/hmg/norm/'
+# zs_outfilename <- 'zs_from_evi_norm.gpkg'
 # 
 # 
 # ## Divide stats by the mean of each year per LandUse
@@ -286,7 +353,7 @@ calc.normalised.hmg.raster(inputdir, outputdir, statsfile, meanfile)
 # # convert LandUse to factor for plotting
 # zs_sf$LandUse <- as.factor(zs_sf$LandUse)
 # # convert year to numeric
-# zs_sf$year <- as.character(zs_sf$year)
+# zs_sf$year <- as.numeric(zs_sf$year)
 # 
 # zs_sf_mean_norm <- zs_sf %>%
 #   dplyr::group_by(LandUse, year) %>%
@@ -301,6 +368,8 @@ calc.normalised.hmg.raster(inputdir, outputdir, statsfile, meanfile)
 #   dplyr::select(-min, -max, -mean, -median, -stdev, -q25, -q75) %>%
 #   dplyr::relocate(geom, .after = q75_norm)
 # 
+# st_write(zs_sf_mean_norm, paste0(zs_outfile_fp, zs_outfilename), append = F)
+# 
 # 
 # # plot normalised stats
 # ggplot(zs_sf_mean_norm,
@@ -311,6 +380,6 @@ calc.normalised.hmg.raster(inputdir, outputdir, statsfile, meanfile)
 #            fill = LandUse)) +
 #   geom_boxplot(stat = 'identity')
 #   geom_point(aes(x = year, y = mean, fill = LandUse))
-#   
+
 
 
