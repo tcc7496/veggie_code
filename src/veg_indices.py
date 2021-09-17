@@ -1,22 +1,19 @@
 '''
 A script containing functions to calculate vegetation indices from sentinel 2 level-2A images
 '''
-# %%
+
 from cloudmask import fmask_to_boolean_cloudmask, rasterized_polygon_clouds_to_cloudmask
-from tree_mask import tree_mask_bool
-from band_process import open_band, update_nodata_vals
+from band_process import open_band
 import numpy as np
 import matplotlib.pyplot as plt
 import rasterio as rio
-from rasterio.mask import mask
-import fiona
 import glob
 import os
-from rasterio.plot import show
 import datetime
 import pandas as pd
 import re
 
+#######################################
 
 def ndvi_calc(filepath, cloudmask, treemask = None, outfile = None, aoi = None):
     '''
@@ -99,11 +96,6 @@ def ndvi_calc(filepath, cloudmask, treemask = None, outfile = None, aoi = None):
             dst.write_band(1, ndvi.filled())
 
     return ndvi
-
-    '''
-    rasters = [rasterio.open(p) for p in file_paths]
-    stacked = np.dstack([r.read() for r in rasters])
-    '''
 
 #######################################
 
@@ -319,61 +311,7 @@ def sort_list_by_date(inlist):
 
     return outlist
 
-# %%
-
-
-
-
-
-
+#######################################
 
 if __name__ == "__main__":
     ''' Main block '''
-
-    # %%
-    # for testing
-    #filepath = '/Users/taracunningham/projects/dissertation/sen2processing/processing/l2a/S2A_MSIL2A_20180514T073611_N9999_R092_T36MZC_20210520T183726.SAFE/'
-
-    #cloudmask = '/Users/taracunningham/projects/dissertation/sen2processing/processing/fmask/S2A_MSIL1C_20180514T073611_N0206_R092_T36MZC_20180514T095515_cloud.tif'
-
-    #treemask = '/Users/taracunningham/projects/dissertation/sen2processing/processing/tree_mask/tree_mask_species_map_4.tif'
-
-    #outfile_ndvi = '/Users/taracunningham/projects/dissertation/sen2processing/processing/ndvi/T36MZC_20180514_ndvi.tif'
-
-    aoi = '/Users/taracunningham/projects/dissertation/other_data/study_area_shapefile/study_area.geojson'
-
-    #ndvi = '/Users/taracunningham/projects/dissertation/sen2processing/processing/ndvi/T36MZC_20180514_ndvi.tif'
-
-    #outfile_ndvi_mask = '/Users/taracunningham/projects/dissertation/sen2processing/processing/ndvi/T36MZC_20180514_ndvi_mask_0-3.tif'
-
-    #outfile_evi = '/Users/taracunningham/projects/dissertation/sen2processing/processing/evi/T36MZC_20180514_evi_ndvi_mask_0-3.tif'
-
-    #threshold = 0.3
-
-    inputdir = '/Users/taracunningham/projects/dissertation/sen2processing/processing/l2a/'
-    path_to_cloudmasks = '/Users/taracunningham/projects/dissertation/sen2processing/processing/cloudmasks.txt'
-
-    batch_veg_indices(inputdir, path_to_cloudmasks, aoi = aoi)
-
-
-
-
-    #ndvi = ndvi_calc(filepath, cloudmask, outfile = outfile_ndvi, aoi = aoi)
-
-    #ndvi_mask = mask_ndvi(ndvi, threshold)
-
-    #evi, evi_profile = evi_calc(filepath, cloudmask, treemask, ndvimask = ndvi_mask, outfile = outfile_evi, aoi = aoi)
-
-
-
-    #plt.imshow(ndvi_mask, cmap='gray')
-    #plt.imshow(ndvi)
-
-
-
-
-
-
-
-
-# %%

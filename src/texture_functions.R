@@ -1,44 +1,53 @@
-######################
-# Script containing functions for processing texture metrics
-######################
+#
+# A script containing functions for processing texture metrics, modelling, and plots
+#
 
-# open raster
+###################################
+
 open.band <- function(band) {
+  # A function to open raster
   band <- raster(band)
   # calc and save min and max values of raster to object
   band <- setMinMax(band)
   return(band)
 }
 
-# mask raster with shapefile
+###################################
+
 mask.raster.with.shp <- function(r, shp) {
-  # values within polygon are set to NA
+  # A function to mask a raster with a shapefile
+  # values within shapefile polygons are set to NA
   # polygon must be contained within raster
   r_masked <- raster::mask(r, mask = shp, inverse = TRUE)
   return(r_masked)
 }
 
-# mask raster with another raster
+###################################
+
 mask.raster.with.raster <- function(r, rmask) {
+  # A function to mask a raster with another raster
   # values with data in rmask are set to NA in r
   r[!is.na(rmask)] <- NA
   return(r)
 }
 
-# prepare the data for glcm calcuation to make sure it's the same each time
+###################################
+
 rescale.outliers <- function(r) {
-  # set values less than 0 to zero
-  # ref: Farwell et al. pg.3
+  # A function to rescale outlying value to prepare data for glcm calcuation
+  # set values less than 0 to 0
   r[r < 0] <- 0
   
   # set values > 1 to NA because meaningless - cloud or water. Negligible pixel count.
-  # don't have a reference for this really.
   r[r > 1] <- NA
   return(r)
 }
 
-# function to rescale outlying percentage of data to that range 
+###################################
+
 rescale.outliers.probs <- function(x, probs = c(0.02, 0.98)) {
+  # A function to rescale outlying percentiles of data
+  # Brings outlying data in to percentile values
   ranges <- quantile(x, probs = probs, na.rm = T)
   x[x < ranges[1]] <- ranges[[1]]
   x[x > ranges[2]] <- ranges[[2]]
@@ -46,44 +55,58 @@ rescale.outliers.probs <- function(x, probs = c(0.02, 0.98)) {
   return(x)
 }
 
-# rescale veg index data and change to integers
+###################################
+
 rescale.to.integers <- function(r) {
+  # A function to rescale raster values and convert to integers
   r <- as.integer(r*100)
   return(r)
 }
 
-# rescale veg index data to 0-255 range and convert to integers
-# assumes range of veg. index is [0,1]
+###################################
+
 rescale.to.eightbit <- function(r, rmin = 0, rmax = 1) {
+  # A function to rescale raster data to 0-255 range and convert to integers
+  # Assumes range of input raster is [0,1]
   r <- as.integer(round(r * 255.0))
   return(r)
 }
 
-# calculate texture metrics function with defaults
-calc.textures <- function(r, stats = c('homogeneity', 'variance'), n_grey = 101) {
+###################################
+
+calc.textures <- function(r, stats = c('homogeneity', 'variance'), n_grey = 256) {
+  # A function to calculate texture metrics
   r_textures <- glcm(r[[1]], window = c(3,3), n_grey = n_grey,
                      shift = list(c(0,1), c(1,1), c(1,0), c(1,-1)),
                      statistics = stats,
-                     min_x = 0, max_x = (n_grey - 1),
+                     min_x = 0, max_x = 255,
                      na_opt = 'any', na_val = NA)
   return(r_textures)
 }
 
-# function to difference two rasters
+###################################
+
 diff_rasters <- function(r1, r2) {
+  # A function to difference two rasters
   rout <- overlay(r1, r2,
                   fun = function(r1, r2) {return(r1 - r2)} )
   return(rout)
 }
 
+###################################
+
 calc.zonal.stats <- function(
   r, polygon,
   stats = c('min', 'max', 'count', 'mean', 'median', 'stdev', 'quantile', 'coefficient_of_variation')) {
-  # calculate zonal stats on a raster within given polygons
+  # A function to calculate zonal statisticss on a raster within given polygons
+  
+  ## Inputs
   # r: single layer raster
   # polygon: sf or SpatialPolygon object containing one or more polygons
   # stats: character vector of statistics to compute
-  # outputs the polygon sf object with an additional column for each statistic
+  
+  ## Outputs
+  # stats_df: An sf object with polygon geometries and an additional column for each statistic
   
   if (grepl('quantile', paste(stats, collapse = ''), fixed = TRUE)) {
     stats_df <- cbind(
@@ -99,11 +122,13 @@ calc.zonal.stats <- function(
   return(stats_df)
 }
 
+###################################
+
 calc.textures.from.evi.batch <- function (
   textures, n_grey = 256, evi_fp, aoi_fp, treemask_fp, swamp_fp, outdir) {
-  # Function to calculate texture metrics and zonal statistics on evi files
+  # A function to calculate texture metrics and zonal statistics on evi files
   
-  ## Inputs ##
+  ## Inputs
   # textures: character vector of texture metrics desired from the glcm calculation
   # n_grey: the number of grey levels to use in the glcm calculation
   # evi_fp: path to directory containing evi files to process
@@ -112,15 +137,13 @@ calc.textures.from.evi.batch <- function (
   # swamp_fp: path to shapefile to mask the swamp
   # outdir: output directory for texture metrics
   
-  ## Outputs ##
+  ## Outputs
   # A directory is created within 'outdir' for each texture metric in
   # 'textures'. The results of the glcm calculation are written to a tif file
   # in the corresponding directory.
   
-  
   # get list of evi files
   evi_inputfilelist <- Sys.glob(file.path(evi_fp, "????????_evi.tif"))
-  #evi_inputfilelist <- c(file.path(evi_fp, '20210602_evi.tif'))
   
   # extract dates
   filenames_dates <- evi_inputfilelist %>%
@@ -166,34 +189,40 @@ calc.textures.from.evi.batch <- function (
       mask.raster.with.shp(swamp_shp) %>%
       mask.raster.with.raster(treemask) %>%
       rescale.outliers() %>%
-      rescale.to.eightbit
-    
-    # testing
-    #x <- raster(ncol=5, nrow=6)
-    #values(x) <- 1:ncell(x)
+      rescale.to.eightbit()
     
     # Calculate texture metrics
     tic('glcm calculation, 3x3 window')
     evi_glcm <- calc.textures(evi_image_prepped, n_grey = n_grey)
-    #evi_glcm <- calc.textures(x, n_grey = 256)
     toc()
     
     # create list of glcm outputs
     glcm_out_list <- names(evi_glcm)
     
-    # write out rasters by looping over textures
-    for (j in 1:length(names(evi_glcm))) {
-      writeRaster(evi_glcm[[j]],
-                  filename = outfilenames_list[[j]][i],
+    if (length(names(evi_glcm)) == 1) {
+      writeRaster(evi_glcm,
+                  filename = outfilenames_list[[1]][i],
                   format = 'GTiff', overwrite = TRUE)
+    }
+    else {
+    # write out rasters by looping over textures
+      for (j in 1:length(names(evi_glcm))) {
+        writeRaster(evi_glcm[[j]],
+                    filename = outfilenames_list[[j]][i],
+                    format = 'GTiff', overwrite = TRUE)
+      }
     }
   }
 }
 
+###################################
+
 remove.hmg.outliers <- function (inputdir, probs) {
-  # A function to rescale the percentiles specified by probs in hmg rasters
-  # and write out the new rescaled file.
-  # output file will be the same as input file with _wo_outliers added to the end
+  # A function to rescale the percentiles specified by probs in homogeneity rasters
+  # and write out the new rescaled file for all years.
+  # output file name will be the same as input file name with '_wo_outliers' added to the end
+  
+  # create list of output files
   inputfilelist <- Sys.glob(file.path(inputdir, '*.tif' )) %>%
     str_sort(numeric = T)
   
@@ -217,15 +246,22 @@ remove.hmg.outliers <- function (inputdir, probs) {
   }
 }
 
+###################################
+
 # if function above is run, don't need to have the rescale_outliers bit in this. Just read in the
 # intermediate rasters
 calc.zonal.stats.batch <- function (inputdir, outfile, aoi, rescale_outliers = c(0.02, 0.98)) {
+  # A function to calculate zonal stats of texture metric raster within shapefile polygons for all years
+  
   ## Inputs
-  # inputdir: directory with input tifs. Will try and process all tifs
+  # inputdir: directory with input tifs.
   # outfile: name of output file. Will be placed in same directory as input files
   # aoi: path to shapefile of aoi
   # rescale_outliers: vector with percentage intervals to rescale outliers.
   #                   Defaults to no rescaling
+  
+  ## Outputs
+  #zs_sf: writes out geopackage of zonal statistics with polygon geometries and zonal statistics
   
   # get list of input files
   inputfilelist <- Sys.glob(file.path(inputdir, "*.tif")) %>%
@@ -265,8 +301,12 @@ calc.zonal.stats.batch <- function (inputdir, outfile, aoi, rescale_outliers = c
   return(zs_sf)
 }
 
+###################################
+
 extract.values.by.polygon.batch <- function (
   inputdir, outfile, aoi, same_pixels = T, normalise = F) {
+  # A function to extract all raster values within polygons in a shapefile
+  
   ## Inputs
   # inputdir: path to input directory of raster files
   # outfile: path to the dir output to be stored including name of file
@@ -283,7 +323,7 @@ extract.values.by.polygon.batch <- function (
     dplyr::select('LandUse', 'geometry')
   
   # obtain list of input files
-  inputfilelist = Sys.glob(file.path(inputdir, "*n256.tif")) %>%
+  inputfilelist = Sys.glob(file.path(inputdir, "*.tif")) %>%
     str_sort(numeric = T)
   
   # create stack of files
@@ -291,7 +331,7 @@ extract.values.by.polygon.batch <- function (
   
   # rescale outliers
   # apply rescale.outliers function to one layer at a time and restack result
-  s <- stack(lapply(1:nlayers(s), function(i){rescale.outliers.probs(s[[i]])}))
+  s <- rastser::stack(lapply(1:nlayers(s), function(i){rescale.outliers.probs(s[[i]])}))
   
   # extract raster values per polygon
   values_per_landuse <- raster::extract(s, polys, df = T)
@@ -317,7 +357,7 @@ extract.values.by.polygon.batch <- function (
       dplyr::summarise(mean = mean(value, na.rm = T))
     
     # write out mean values per landuse
-    #write.csv2(mean_per_landuse, file = 'landuse_normalised_values.csv')
+    write.csv2(mean_per_landuse, file = 'landuse_mean_values.csv')
     
     # Normalise values of homogeneity to calculated mean values / landuse
     values_per_landuse_tidy_cp <- values_per_landuse_tidy_cp %>%
@@ -356,18 +396,25 @@ extract.values.by.polygon.batch <- function (
   return(values_per_landuse_tidy_cp_na)
 }
 
-calc.normalised.hmg.raster <- function (inputdir, outputdir, statsfile, meanfile) {
+###################################
+
+calc.normalised.hmg.raster <- function (inputdir, outputdir, aoi, meanfile) {
   # A function that outputs a raster normalised to the mean of each polygon across all years
-  # takes in rasters with hmg outliers (0.02, 0.98) removed
+  
+  ## Inputs
+  # inputdir: input directory containing texture metric tifs with outliers removed
+  # outputdir: directory to put output files
+  # aoi: shapefile with polygons across which to normalise
+  # meanfile: csv file with mean value of texture metric across all years per land use
+  
+  ## Outputs
+  # geotiff of normalised texture for each year
   
   # read in zonal stats
-  stats_sf <- st_read(paste0(inputdir, statsfile))
-  
-  # read in normalised values per landuse
-  mean_df <- read.csv2(paste0(inputdir, meanfile))
+  study_area_sf <- st_read(aoi)
   
   # get list of evi files in year
-  inputfilelist <- Sys.glob(file.path(inputdir, '*wo_outliers.tif' )) %>%
+  inputfilelist <- Sys.glob(file.path(inputdir, '*.tif' )) %>%
     str_sort(numeric = T)
   # create list of output files
   outfilelist <- inputfilelist %>%
@@ -381,7 +428,7 @@ calc.normalised.hmg.raster <- function (inputdir, outputdir, statsfile, meanfile
   
   # read in mean over years
   # [1,3]: Conservancy, [2,3]: Livestock Rearing Area
-  mean_df <- read.csv2(paste0(inputdir, meanfile))
+  mean_df <- read.csv2(meanfile)
   
   # loop over inputfile list
   for (i in 1:length(inputfilelist)) {
@@ -395,7 +442,7 @@ calc.normalised.hmg.raster <- function (inputdir, outputdir, statsfile, meanfile
     s <- raster::stack(r_cp_1, r_cp_2)
     
     ## Conservancy
-    c_poly <- as_Spatial(stats$geom[1])
+    c_poly <- as_Spatial(study_area_sf$geometry[1])
     # mask Livestock Rearing area
     s[[1]] <- mask(s[[1]], c_poly)
     # divide by mean to normalize
@@ -405,7 +452,7 @@ calc.normalised.hmg.raster <- function (inputdir, outputdir, statsfile, meanfile
     
     
     ## Livestock Rearing Area
-    g_poly <- as_Spatial(stats$geom[2])
+    g_poly <- as_Spatial(study_area_sf$geometry[2])
     # mask conservancy
     s[[2]] <- mask(s[[2]], g_poly)
     # divide by mean to normalize
@@ -427,7 +474,12 @@ calc.normalised.hmg.raster <- function (inputdir, outputdir, statsfile, meanfile
   }
 }
 
+###################################
+
 sample.df <- function (df, n_sample, seed_n = 42) {
+  # A function to sample homogeneity data frame
+  
+  ## Inputs
   # df: dataframe of texture metrics with landuse and year
   # n_sample: can be a single number or vector of two numbers.
   #           If a single number, no. of pixels sampled from each landuse per year
@@ -455,24 +507,39 @@ sample.df <- function (df, n_sample, seed_n = 42) {
   return(df_sample)
 }
 
+###################################
+
 convert.dtpyes.for.plot <- function (df) {
-  # Convert pixel_id and LandUse to factors
+  # A function to convert pixel_id and LandUse to factors, and year to a number for modelling
+  
+  # convert pixel_id and LandUse to factors 
   df$pixel_id <- as.factor(df$pixel_id)
   df$LandUse <- as.factor(df$LandUse)
   
-  # Convert year to numeric
+  # convert year to numeric
   df$year <- as.numeric(df$year)
   
   return(df)
 }
 
-calc.rainfall <- function (inputdir, outfile) {
+###################################
+
+calc.rainfall <- function (inputdir, outfile, polygons) {
+  # A function to calculate total rainfall per year for each land use
+  
+  ## Inputs
+  # inputdir: directory containing monthly precipitation geotifs
+  # outfile: full file path and filename of output csv 
+  # polygons: shapefile with polygons within which to calcualte rainfall
+  
+  ## Outputs
+  # csv file of growing season rainfall per year and land use
   
   year_list <- c('2021', '2020', '2019', '2018', '2017', '2016') %>%
     str_sort(numeric = T)
   
   # open shapefile to get crs
-  study_area_shp <- st_read(study_area)
+  study_area_shp <- st_read(polygons)
   
   # create empty df for results
   rainfall_df <- data.frame(LandUse = character(),
@@ -497,13 +564,12 @@ calc.rainfall <- function (inputdir, outfile) {
     # sum raster stack
     rain_crop_sum <- calc(s_crop, fun = sum)
     
-    # extract average rainfall per polygon
+    # extract average rainfall per polygon using weighted mean
     rain_mean <- cbind(
       exact_extract(rain_crop_sum, study_area_shp,
                     fun = 'weighted_mean',
                     weights = 'area',
                     force_df = TRUE,
-                    #include_cols = c('LandUse'),
                     progress = T),
       LandUse = study_area_shp$LandUse) %>%
       dplyr::mutate('year' = year_list[i]) # add year as a column
@@ -519,5 +585,6 @@ calc.rainfall <- function (inputdir, outfile) {
   write.csv2(rainfall_df, file = outfile)
     
   return(rainfall_df)
-
 }
+
+###################################

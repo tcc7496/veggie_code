@@ -4,12 +4,12 @@ A script to mask three tree species in a plant species map of the study area. Ou
 
 import rasterio as rio
 from rasterio.enums import Resampling
-from matplotlib import pyplot as plt
 import numpy as np
 from band_process import *
 import shutil
 from rasterio.io import MemoryFile
 
+#######################################
 
 def tree_mask(file, outfile, aoi = None):
     '''
@@ -18,7 +18,6 @@ def tree_mask(file, outfile, aoi = None):
 
     tmp = shutil.copy(file, f'{file[:-4]}_copy.tif')
 
-    # %%
     # resample data to 10m resolution
     upscale_factor = 2
 
@@ -72,7 +71,7 @@ def tree_mask(file, outfile, aoi = None):
 
     # convert to masked array with species desired masked
     species_trees_masked = np.ma.array(species_map, mask = np.isin(species_map, [2, 4, 5, 6, 8, 9], invert = True))
-    # %% 
+    
     # set fill value to universal nodata value
     np.ma.set_fill_value(species_trees_masked, -9999)
 
@@ -132,24 +131,11 @@ def tree_mask_bool(file, aoi = None):
     for m in msk_species:
         msk = np.isin(species_map, m)
         tree_mask_bool = msk | tree_mask_bool
-
-    
+ 
     return tree_mask_bool
-
-    
+ 
 #######################################
 
 if __name__ == "__main__":
     ''' Main block '''
 
-    file = '/Users/taracunningham/projects/dissertation/other_data/original/svmRadial_Multiple_season_time_series_raster_final.tif'
-
-    outfile = '/Users/taracunningham/projects/dissertation/sen2processing/processing/tree_mask/tree_mask_species_map_4.tif'
-
-    aoi = '/Users/taracunningham/projects/dissertation/other_data/study_area_shapefile/study_area.geojson'
-
-    tree_mask(file, outfile, aoi = aoi)
-
-
-
-# %%

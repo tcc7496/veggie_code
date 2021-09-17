@@ -1,13 +1,13 @@
 '''
 A script to deal with tif files
 '''
-# %%
+
 import rasterio as rio
 from rasterio.mask import mask
 import fiona
-import pyproj
-from shapely.ops import transform
 import numpy as np
+
+#######################################
 
 def open_band(file, aoi = None):
     '''
@@ -107,15 +107,9 @@ def update_profile_dtype(profile, dst_dtype):
 
 #######################################
 
-def reproject_crs(file, dst_crs):
-    '''
-
-    '''
-
 
 if __name__ == "__main__":
     ''' Main block '''
 
     
 
-# %%

@@ -2,18 +2,13 @@
 A script to create a cloud mask of Sentinel 2 L1C images using python fmask
 '''
 
-# %%
 import rasterio as rio
-import matplotlib.pyplot as plt
 import numpy as np
 import os
 import subprocess
-from osgeo import gdal
 import glob
-from tree_mask import tree_mask_bool
 import fiona
 from rasterio.mask import mask
-
 
 #######################################
 
@@ -183,24 +178,10 @@ def rasterized_polygon_clouds_to_cloudmask(file, aoi = None):
     return boolean_msk
 
     
-
-   
 #######################################
 
 if __name__ == "__main__":
     ''' Main block '''
-# %%
-    # specify input and output directories
-    #inputdir = '/Users/taracunningham/projects/dissertation/sen2processing/original/sen2/'
-    #outdir = '/Users/taracunningham/projects/dissertation/sen2processing/processing/fmask/'
-
-    # batch process cloud masks
-    # batch_cloud_fmask(inputdir, outdir)
-
-    # process single file
-    #filename = 'S2B_MSIL1C_20210602T073619_N0300_R092_T36MZC_20210602T101733.SAFE'
-    #file = os.path.join(inputdir, filename)
-    #cloud_fmask(file, outdir)
 
     
 

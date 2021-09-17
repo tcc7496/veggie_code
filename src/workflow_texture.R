@@ -24,6 +24,7 @@ library(nlme)
 library(glmm)
 library(tibble)
 library(patchwork)
+library(MASS)
 
 
 #### Working Dir ----
@@ -103,7 +104,7 @@ calc.normalised.hmg.raster(inputdir, outputdir, statsfile, meanfile)
 ## Extract all raster values per polygon ----
 
 # Do 2 runs, one with the only the same pixels across all the years, one without
-# If normalise = T, output csv has normal values too
+# If normalise = T, output csv has normal values too so can use those
 inputdir = 'texture_metrics/from_evi/hmg/abs/'
 outputdir_abs = inputdir
 outputdir_norm = 'texture_metrics/from_evi/hmg/norm/'
@@ -149,21 +150,23 @@ values_per_landuse_norm <- extract.values.by.polygon.batch(
 
 ## Rainfall data ----
 
-# inputdir <- '../original/rainfall/monthly/tifs/'
-# outfile <- 'rainfall/rainfall_sum_mar_to_june.csv'
-# 
-# rainfall_df <- calc.rainfall(inputdir, outfile)
+inputdir <- '../original/rainfall/monthly/tifs/'
+outfile <- 'rainfall/rainfall_sum_mar_to_june_whole_sa.csv'
+
+rainfall_df <- calc.rainfall(inputdir, outfile)
 
 
 ## NDVI ----
 # calculate average NDVI across land use per year
 
 ndvi_fp = 'veg_indices/ndvi/'
-year_list
+swamp_file <- 'swamp_shapefiles/swamp_clipped.shp'
+year_list = c('2016', '2017', '2018', '2019', '2020', '2021')
 
 # obtain list of ndvi files
 ndvi_file_list = Sys.glob(file.path(ndvi_fp, "????????_ndvi.tif")) %>%
   str_sort(numeric = T)
+
 
 # open swamp shapefile and study area
 swamp_shp <- st_read(swamp_file)
@@ -175,8 +178,25 @@ ndvi_stack <- raster::stack(ndvi_file_list) %>%
   # mask swamp to get remove main water
   mask.raster.with.shp(swamp_shp)
 
+ndvi_stack_cp <- ndvi_stack
+
 # remove values less than zero (corresponding to water)
-ndvi_stack[ndvi_stack < 0] = NA
+ndvi_stack_cp[ndvi_stack_cp < 0] <- 0
+
+# mask trees
+ndvi_stack_cp[ndvi_stack_cp > 0.6] <- 0
+ndvi_stack_cp[ndvi_stack_cp < 0.6 & ndvi_stack_cp > 0] <- 1
+
+# put clouds to -1
+ndvi_stack_cp[is.na(ndvi_stack_cp)] <- -1
+
+# create mask raster
+ndvi_sum <- calc(ndvi_stack_cp, fun = sum)
+
+ndvi_mask <- ndvi_sum
+
+ndvi_mask[ndvi_sum < 6 & ndvi_sum >= 0] <- NA
+# ahhhhhh
 
 stats_list <- c('mean', 'stdev')
 # extract mean NDVI value per landuse
@@ -381,5 +401,161 @@ ggplot(data = ndvi_zs_test2,
 #   geom_boxplot(stat = 'identity')
 #   geom_point(aes(x = year, y = mean, fill = LandUse))
 
+
+## Normalising EVI ----
+
+# start with EVI cloud masked
+evi_fp <- 'veg_indices/evi/' # location of evi files to process
+treemask_file <- 'tree_mask/tree_mask_species_map_4_inverse_buffered.tif'
+swamp_file <- 'swamp_shapefiles/swamp_clipped.shp'
+study_area_fp <- '../../other_data/study_area_shapefile/study_area_buffer_aggr_w_conservancy.shp'
+outdir <- file.path('texture_from_rescaled_evi/')
+
+# open swamp shapefile
+swamp_shp <- st_read(swamp_file)
+
+# open treemask raster
+treemask <- open.band(treemask_file)
+
+# open study area shapefile
+study_area_sf <- st_read(study_area_fp) %>%
+  dplyr::select('LandUse', 'geometry')
+
+
+# obtain list of input files
+inputfilelist = Sys.glob(file.path(evi_fp, "????????_evi.tif")) %>%
+  str_sort(numeric = T)
+
+# get base filenames
+filenames <- inputfilelist %>%
+  basename() %>%
+  str_remove_all(pattern = c('.tif')) # remove file ending
+
+outputfilelist_evi <- paste0(outdir, 'evi/', filenames, '_rescaled.tif')
+outputfilelist_hmg <- paste0(outdir, 'hmg/', filenames, '_hmg.tif')
+
+# stack rasters for processing
+s <- raster::stack(inputfilelist)
+
+# do this for a masked stack at a time, then add them back together
+
+c_poly <- as_Spatial(study_area_sf$geometry[1])
+g_poly 
+s_c <- mask(s, as_Spatial(study_area_sf$geometry[2]))
+s_g <- mask(s, as_Spatial(study_area_sf$geometry[1]))
+library(scales)
+
+# deal with each one independently
+# Conservancy s_c
+for (i in 1:length(names(s_c))) {
+  s_c[[i]] <- rescale.outliers(s_c[[i]]) %>%
+    mask.raster.with.shp(swamp_shp) %>%
+    mask.raster.with.raster(treemask) %>%
+    rescale.outliers.probs()
+}
+sc_max <- max(maxValue(s_c))
+sc_min <- min(minValue(s_c))
+# rescale to integers on (0,255)
+s_c_new <- as.integer((255/(sc_max - sc_min)) * (s_c - sc_max) + 255)
+
+# convert NA values to -1 for addition
+s_c_new[is.na(s_c_new)] <- -1
+
+# Grazing area s_g
+for (i in 1:length(names(s_g))) {
+  s_g[[i]] <- rescale.outliers(s_g[[i]]) %>%
+    mask.raster.with.shp(swamp_shp) %>%
+    mask.raster.with.raster(treemask) %>%
+    rescale.outliers.probs()
+}
+sg_max <- max(maxValue(s_g))
+sg_min <- min(minValue(s_g))
+# rescale to integers on (0,255)
+s_g_new <- as.integer((255/(sg_max - sg_min)) * (s_g - sg_max) + 255)
+# convert NA values to -1 for addition
+s_g_new[is.na(s_g_new)] <- -1
+
+# create new stack to hold results
+s_new <- s_c_new
+# loop over both stacks to add
+for (i in 1:length(names(s_new))) {
+  s_new[[i]] <- s_c_new[[i]] + s_g_new[[i]]
+}
+
+# put -ve values back to NA
+s_new[s_new < 0] <- NA
+
+
+# loop over s_new to calculate textures
+for (i in 1:length(names(s_new))) {
+  # write out evi raster
+  writeRaster(s_new[[i]],
+              filename = outputfilelist_evi[i],
+              format = 'GTiff', overwrite = TRUE)
+  
+  # calculate homogeneity texture
+  r <- calc.textures(s_new[[i]],
+                stats - c('homogeneity'),
+                n_grey = 256)
+  
+  # write out hmg raster
+  writeRaster(r,
+              filename = outputfilelist_hmg[i],
+              format = 'GTiff', overwrite = TRUE)
+  
+}
+
+
+
+# think I need to divide by mean EVI across all years per landuse
+# no I don't
+
+evi_per_landuse <- raster::extract(s, study_area_sf, df = T)
+
+# tidy data and convert to longform dataframe
+evi_per_landuse_tidy_cp <- evi_per_landuse %>%
+  setNames(c('id', 'x2016', 'x2017', 'x2018', 'x2019', 'x2020', 'x2021')) %>%
+  # convert landuse ID column to names of landuse
+  dplyr::mutate(LandUse =
+                  dplyr::case_when(id == 1 ~ study_area_sf$LandUse[1],
+                                   id == 2 ~ study_area_sf$LandUse[2])
+  ) %>%
+  dplyr::select(-id) %>%
+  # add pixel id as column
+  tibble::rowid_to_column("pixel_id")
+
+# find mean value of homogeneity per landuse across all years
+mean_per_landuse <- evi_per_landuse_tidy_cp %>%
+  pivot_longer(cols = starts_with("x"), names_to = "year") %>%
+  dplyr::group_by(LandUse) %>%
+  dplyr::summarise(median = median(value, na.rm = T))
+  
+# write out mean values per landuse
+write.csv2(mean_per_landuse, file = 'texture_from_norm_evi/median/landuse_normalised_values.csv')
+
+calc.normalised.hmg.raster(inputdir = evi_fp,
+                           outputdir = 'texture_from_norm_evi/',
+                           aoi = study_area_fp,
+                           meanfile = 'texture_from_norm_evi/median/landuse_normalised_values.csv')
+
+
+evi_norm2016 <- open.band('texture_from_norm_evi/median/20160514_evi_norm2.tif') %>%
+  mask.raster.with.raster(treemask) %>%
+  mask.raster.with.shp(swamp_shp)
+plot(evi_norm2016, col = viridis(256))
+
+inputfilelist <- Sys.glob(file.path('texture_from_norm_evi/', "*.tif")) %>%
+  str_sort(numeric = T)
+s_norm <- raster::stack(inputfilelist)
+
+for (i in 1:length(names(s_norm))) {
+  s_norm[[i]][s_norm[[i]] < 0] <- 0
+  s_norm[[i]] <- s_norm[[i]] %>%
+    mask.raster.with.shp(swamp_shp) %>%
+    mask.raster.with.raster(treemask) %>%
+    rescale.outliers.probs(c(0.02, 0.98))
+}
+
+calc.zonal.stats(s, study_area_sf, stats = c('mean', 'min', 'max'))
 
 
